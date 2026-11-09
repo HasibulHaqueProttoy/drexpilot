@@ -77,8 +77,10 @@ export class LinkedInPublisher implements IPublisher {
       };
     }
 
-    // Real Official LinkedIn Posts API call
-    const authorUrn = `urn:li:person:${account.accountId}`;
+    // Real Official LinkedIn Posts API call (handles personal profiles and company pages)
+    const authorUrn = account.accountType === "organization"
+      ? `urn:li:organization:${account.accountId}`
+      : `urn:li:person:${account.accountId}`;
     const payload = {
       author: authorUrn,
       commentary: content,

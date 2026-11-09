@@ -32,15 +32,19 @@ function ConnectionsContent() {
     }
   }, [searchParams]);
 
-  const handleDisconnect = async () => {
-    if (!confirm("Are you sure you want to disconnect LinkedIn? Scheduled posts will not be able to publish until reconnected.")) {
+  const handleDisconnect = async (id?: string) => {
+    if (!confirm(id ? "Are you sure you want to disconnect this target?" : "Are you sure you want to disconnect all LinkedIn accounts?")) {
       return;
     }
     setActionLoading(true);
     try {
-      const res = await fetch("/api/auth/linkedin/disconnect", { method: "POST" });
+      const res = await fetch("/api/auth/linkedin/disconnect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(id ? { id } : {}),
+      });
       if (res.ok) {
-        setNotification("LinkedIn disconnected successfully.");
+        setNotification("Account disconnected successfully.");
         await fetchStatus();
       }
     } catch (err: any) {
@@ -86,23 +90,23 @@ function ConnectionsContent() {
       )}
 
       {/* LinkedIn Connection Card */}
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
           <div className="flex items-center space-x-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#0077b5] text-white shadow-sm font-bold text-lg">
               in
             </div>
             <div>
-              <h3 className="text-base font-semibold text-slate-900">LinkedIn</h3>
-              <p className="text-xs text-slate-500">Personal Profile Publishing via Official Posts API</p>
+              <h3 className="text-base font-semibold text-slate-900">LinkedIn Publishing</h3>
+              <p className="text-xs text-slate-500">Personal Profiles & Company Pages via Official Posts API</p>
             </div>
           </div>
 
           {/* Status indicator */}
-          {linkedinAccount ? (
+          {status?.connected ? (
             <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 border border-emerald-200">
               <CheckCircle2 className="h-4 w-4 text-emerald-600 mr-1.5" />
-              Connected
+              Connected ({(status?.accounts || []).length} active)
             </span>
           ) : (
             <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 border border-slate-200">
@@ -111,55 +115,110 @@ function ConnectionsContent() {
           )}
         </div>
 
-        {/* Account Details */}
-        {linkedinAccount ? (
-          <div className="rounded-lg bg-slate-50 p-4 border border-slate-100 space-y-2 text-xs">
-            <div className="flex justify-between items-center">
-              <span className="text-slate-500">Connected Profile Name:</span>
-              <span className="font-semibold text-slate-800">{linkedinAccount.accountName}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-slate-500">Platform Account ID:</span>
-              <span className="font-mono text-slate-700">{linkedinAccount.accountId}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-slate-500">Token Status:</span>
-              <span className="text-emerald-700 font-medium">Valid & Encrypted (AES-256-GCM)</span>
-            </div>
-            {linkedinAccount.tokenExpiresAt && (
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500">Token Expiration:</span>
-                <span className="text-slate-600">
-                  {new Date(linkedinAccount.tokenExpiresAt).toLocaleDateString()}
-                </span>
+        {/* Connected Accounts & Pages List */}
+        {status?.connected ? (
+          <div className="space-y-4">
+            {/* Personal Profiles */}
+            {status?.personalProfiles?.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Personal Profiles</h4>
+                <div className="space-y-2">
+                  {status.personalProfiles.map((acc: any) => (
+                    <div
+                      key={acc.id}
+                      className="flex items-center justify-between rounded-lg bg-slate-50 p-3 border border-slate-200 text-xs"
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 text-blue-700 font-semibold text-xs">
+                          👤
+                        </div>
+                        <div>
+                          <div className="font-semibold text-slate-900">{acc.accountName}</div>
+                          <div className="text-[11px] text-slate-400 font-mono">ID: {acc.accountId}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-3">
+                        <span className="text-[11px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-medium">
+                          Active (AES-256-GCM)
+                        </span>
+                        <button
+                          onClick={() => handleDisconnect(acc.id)}
+                          disabled={actionLoading}
+                          className="text-rose-600 hover:text-rose-800 p-1 hover:bg-rose-50 rounded"
+                          title="Disconnect this profile"
+                        >
+                          <Unlink className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Company Pages */}
+            {status?.companyPages?.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Company Pages (Organizations)</h4>
+                <div className="space-y-2">
+                  {status.companyPages.map((acc: any) => (
+                    <div
+                      key={acc.id}
+                      className="flex items-center justify-between rounded-lg bg-slate-50 p-3 border border-slate-200 text-xs"
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-100 text-indigo-700 font-semibold text-xs">
+                          🏢
+                        </div>
+                        <div>
+                          <div className="font-semibold text-slate-900">{acc.accountName}</div>
+                          <div className="text-[11px] text-slate-400 font-mono">Org URN: urn:li:organization:{acc.accountId}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-3">
+                        <span className="text-[11px] text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 font-medium">
+                          Company Page
+                        </span>
+                        <button
+                          onClick={() => handleDisconnect(acc.id)}
+                          disabled={actionLoading}
+                          className="text-rose-600 hover:text-rose-800 p-1 hover:bg-rose-50 rounded"
+                          title="Disconnect this page"
+                        >
+                          <Unlink className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
         ) : (
           <p className="text-xs text-slate-500 leading-relaxed">
-            Connect your personal LinkedIn account to allow Claude and PostPilot to schedule and publish text posts. PostPilot requests only the minimal official <code className="text-slate-800 bg-slate-100 px-1 py-0.5 rounded font-mono">w_member_social</code> scope.
+            Connect your LinkedIn account to allow Claude and DrexPilot to schedule and publish posts to both your personal profile and any LinkedIn company pages you manage.
           </p>
         )}
 
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-3 pt-2">
-          {linkedinAccount ? (
+          <a
+            href="/api/auth/linkedin"
+            className="inline-flex items-center space-x-1.5 rounded-lg bg-[#0077b5] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[#006097] transition-colors"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            <span>Connect via LinkedIn OAuth 2.0</span>
+          </a>
+
+          {status?.connected && (
             <button
-              onClick={handleDisconnect}
+              onClick={() => handleDisconnect()}
               disabled={actionLoading}
-              className="inline-flex items-center space-x-1.5 rounded-lg border border-rose-300 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition-colors disabled:opacity-50"
+              className="inline-flex items-center space-x-1.5 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition-colors disabled:opacity-50"
             >
               <Unlink className="h-3.5 w-3.5" />
-              <span>Disconnect LinkedIn</span>
+              <span>Disconnect All</span>
             </button>
-          ) : (
-            <a
-              href="/api/auth/linkedin"
-              className="inline-flex items-center space-x-1.5 rounded-lg bg-[#0077b5] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[#006097] transition-colors"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              <span>Connect via LinkedIn OAuth 2.0</span>
-            </a>
           )}
 
           {/* Instant Demo / Test Toggle */}
@@ -169,7 +228,7 @@ function ConnectionsContent() {
             className="inline-flex items-center space-x-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
           >
             <ShieldCheck className="h-3.5 w-3.5 text-blue-600" />
-            <span>{linkedinAccount ? "Reset to Test Profile" : "Connect Test/Demo Account"}</span>
+            <span>Connect Demo Profile & Demo Page</span>
           </button>
         </div>
       </div>

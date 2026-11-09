@@ -1,0 +1,1 @@
+ALTER TABLE "social_accounts" ADD COLUMN "account_type" varchar(50) DEFAULT 'personal' NOT NULL;

@@ -25,7 +25,8 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       client_id: env.LINKEDIN_CLIENT_ID,
       redirect_uri: env.LINKEDIN_REDIRECT_URI,
       state,
-      scope: "openid profile email w_member_social",
+      // Request both Personal Profile and Company Page publishing scopes
+      scope: "openid profile email w_member_social w_organization_social r_organization_social",
     });
 
     const authUrl = `https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`;
@@ -99,7 +100,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       const encryptedRefreshToken = tokenData.refresh_token ? encrypt(tokenData.refresh_token) : null;
       const expiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
 
-      // 4. Upsert account record
+      // 4. Upsert Personal Account record
       const existing = await db.query.socialAccounts.findFirst({
         where: and(
           eq(socialAccounts.platform, "linkedin"),
@@ -112,6 +113,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           .update(socialAccounts)
           .set({
             accountName: profile.name,
+            accountType: "personal",
             accessTokenEncrypted: encryptedAccessToken,
             refreshTokenEncrypted: encryptedRefreshToken,
             tokenExpiresAt: expiresAt,
@@ -124,6 +126,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           platform: "linkedin",
           accountId: profile.sub,
           accountName: profile.name,
+          accountType: "personal",
           accessTokenEncrypted: encryptedAccessToken,
           refreshTokenEncrypted: encryptedRefreshToken,
           tokenExpiresAt: expiresAt,
@@ -131,7 +134,92 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         });
       }
 
-      return reply.redirect(`${env.FRONTEND_URL}/connections?connected=true&account=${encodeURIComponent(profile.name)}`);
+      // 5. Automatically discover managed LinkedIn Company Pages
+      let discoveredPagesCount = 0;
+      try {
+        const aclsRes = await fetch("https://api.linkedin.com/rest/organizationalEntityAcls?q=roleAssignee", {
+          headers: {
+            Authorization: `Bearer ${tokenData.access_token}`,
+            "LinkedIn-Version": "202401",
+            "X-Restli-Protocol-Version": "2.0.0",
+          },
+        });
+
+        if (aclsRes.ok) {
+          const aclsData = await aclsRes.json() as { elements?: Array<{ organizationalTarget?: string; role?: string; state?: string }> };
+          const elements = aclsData.elements || [];
+
+          for (const item of elements) {
+            const orgUrn = item.organizationalTarget;
+            if (!orgUrn || !orgUrn.includes("organization:")) continue;
+            const orgId = orgUrn.split(":").pop();
+            if (!orgId) continue;
+
+            // Fetch company details
+            let orgName = `Company Page (${orgId})`;
+            try {
+              const orgDetailsRes = await fetch(`https://api.linkedin.com/rest/organizations/${orgId}`, {
+                headers: {
+                  Authorization: `Bearer ${tokenData.access_token}`,
+                  "LinkedIn-Version": "202401",
+                  "X-Restli-Protocol-Version": "2.0.0",
+                },
+              });
+              if (orgDetailsRes.ok) {
+                const orgInfo = await orgDetailsRes.json() as { localizedName?: string };
+                if (orgInfo.localizedName) {
+                  orgName = orgInfo.localizedName;
+                }
+              }
+            } catch {
+              // fallback
+            }
+
+            // Upsert organization page
+            const existingOrg = await db.query.socialAccounts.findFirst({
+              where: and(
+                eq(socialAccounts.platform, "linkedin"),
+                eq(socialAccounts.accountId, orgId)
+              ),
+            });
+
+            if (existingOrg) {
+              await db
+                .update(socialAccounts)
+                .set({
+                  accountName: orgName,
+                  accountType: "organization",
+                  accessTokenEncrypted: encryptedAccessToken,
+                  refreshTokenEncrypted: encryptedRefreshToken,
+                  tokenExpiresAt: expiresAt,
+                  status: "connected",
+                  updatedAt: new Date(),
+                })
+                .where(eq(socialAccounts.id, existingOrg.id));
+            } else {
+              await db.insert(socialAccounts).values({
+                platform: "linkedin",
+                accountId: orgId,
+                accountName: orgName,
+                accountType: "organization",
+                accessTokenEncrypted: encryptedAccessToken,
+                refreshTokenEncrypted: encryptedRefreshToken,
+                tokenExpiresAt: expiresAt,
+                status: "connected",
+              });
+            }
+            discoveredPagesCount++;
+          }
+        }
+      } catch (orgErr) {
+        console.warn("[OAuth] Could not fetch company pages:", orgErr);
+      }
+
+      const redirectMsg = discoveredPagesCount > 0
+        ? `Connected ${profile.name} and ${discoveredPagesCount} company page(s)!`
+        : `Connected ${profile.name}!`;
+
+      return reply.redirect(`${env.FRONTEND_URL}/connections?connected=true&account=${encodeURIComponent(redirectMsg)}`);
     } catch (err: any) {
       console.error("[OAuth] Callback exception:", err);
       return reply.redirect(`${env.FRONTEND_URL}/connections?error=${encodeURIComponent(err.message || "OAuth processing failed")}`);
@@ -146,6 +234,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         platform: true,
         accountId: true,
         accountName: true,
+        accountType: true,
         status: true,
         tokenExpiresAt: true,
         createdAt: true,
@@ -153,17 +242,33 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       },
     });
 
-    const linkedin = accounts.find((a) => a.platform === "linkedin" && a.status === "connected") || null;
+    const activeAccounts = accounts.filter((a) => a.status === "connected");
+    const personalProfiles = activeAccounts.filter((a) => a.accountType === "personal");
+    const companyPages = activeAccounts.filter((a) => a.accountType === "organization");
 
     return {
-      connected: Boolean(linkedin),
-      linkedin,
-      accounts,
+      connected: activeAccounts.length > 0,
+      accounts: activeAccounts,
+      allAccounts: accounts,
+      personalProfiles,
+      companyPages,
+      linkedin: personalProfiles[0] || activeAccounts[0] || null,
     };
   });
 
-  // POST /api/auth/linkedin/disconnect - Disconnect account
+  // POST /api/auth/linkedin/disconnect - Disconnect account(s)
   fastify.post("/linkedin/disconnect", async (request, reply) => {
+    const body = (request.body as { id?: string } | undefined) || {};
+
+    if (body.id) {
+      await db
+        .update(socialAccounts)
+        .set({ status: "disconnected", updatedAt: new Date() })
+        .where(eq(socialAccounts.id, body.id));
+      return { success: true, message: "Account disconnected successfully." };
+    }
+
+    // Disconnect all if no ID specified
     const accounts = await db.query.socialAccounts.findMany({
       where: eq(socialAccounts.platform, "linkedin"),
     });
@@ -175,35 +280,72 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         .where(eq(socialAccounts.id, acc.id));
     }
 
-    return { success: true, message: "LinkedIn account disconnected successfully." };
+    return { success: true, message: "All LinkedIn accounts and pages disconnected." };
   });
 
-  // POST /api/auth/mock-connect - Enable test account for instant local testing/demo
+  // POST /api/auth/mock-connect - Enable test account and test company page for instant local demo
   fastify.post("/mock-connect", async (request, reply) => {
-    const existing = await db.query.socialAccounts.findFirst({
-      where: eq(socialAccounts.platform, "linkedin"),
-    });
-
     const mockToken = encrypt("mock_linkedin_access_token_demo_mode");
     const expiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000); // 60 days
 
-    if (existing) {
+    // 1. Personal Profile
+    const existingPersonal = await db.query.socialAccounts.findFirst({
+      where: and(
+        eq(socialAccounts.platform, "linkedin"),
+        eq(socialAccounts.accountId, "mock_person_123456")
+      ),
+    });
+
+    if (existingPersonal) {
       await db
         .update(socialAccounts)
         .set({
-          accountId: "mock_person_123456",
-          accountName: "Drex Verified LinkedIn User (Test Profile)",
+          accountName: "Drex Verified Member (Personal Profile)",
+          accountType: "personal",
           accessTokenEncrypted: mockToken,
           tokenExpiresAt: expiresAt,
           status: "connected",
           updatedAt: new Date(),
         })
-        .where(eq(socialAccounts.id, existing.id));
+        .where(eq(socialAccounts.id, existingPersonal.id));
     } else {
       await db.insert(socialAccounts).values({
         platform: "linkedin",
         accountId: "mock_person_123456",
-        accountName: "Drex Verified LinkedIn User (Test Profile)",
+        accountName: "Drex Verified Member (Personal Profile)",
+        accountType: "personal",
+        accessTokenEncrypted: mockToken,
+        tokenExpiresAt: expiresAt,
+        status: "connected",
+      });
+    }
+
+    // 2. Company Page
+    const existingOrg = await db.query.socialAccounts.findFirst({
+      where: and(
+        eq(socialAccounts.platform, "linkedin"),
+        eq(socialAccounts.accountId, "mock_org_987654")
+      ),
+    });
+
+    if (existingOrg) {
+      await db
+        .update(socialAccounts)
+        .set({
+          accountName: "Drex Digital Agency (Company Page)",
+          accountType: "organization",
+          accessTokenEncrypted: mockToken,
+          tokenExpiresAt: expiresAt,
+          status: "connected",
+          updatedAt: new Date(),
+        })
+        .where(eq(socialAccounts.id, existingOrg.id));
+    } else {
+      await db.insert(socialAccounts).values({
+        platform: "linkedin",
+        accountId: "mock_org_987654",
+        accountName: "Drex Digital Agency (Company Page)",
+        accountType: "organization",
         accessTokenEncrypted: mockToken,
         tokenExpiresAt: expiresAt,
         status: "connected",
@@ -212,7 +354,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
 
     return {
       success: true,
-      message: "Test LinkedIn account connected successfully. You can now schedule or publish posts immediately.",
+      message: "Test Personal Profile & Test Company Page connected successfully! You can now publish to either target.",
     };
   });
 };

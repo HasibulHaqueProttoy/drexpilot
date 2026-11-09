@@ -8,6 +8,7 @@ export const socialAccounts = pgTable(
     platform: varchar("platform", { length: 50 }).notNull().default("linkedin"),
     accountId: varchar("account_id", { length: 255 }).notNull(),
     accountName: varchar("account_name", { length: 255 }).notNull(),
+    accountType: varchar("account_type", { length: 50 }).notNull().default("personal"), // 'personal' | 'organization'
     accessTokenEncrypted: text("access_token_encrypted").notNull(),
     refreshTokenEncrypted: text("refresh_token_encrypted"),
     tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),

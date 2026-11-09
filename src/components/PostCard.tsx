@@ -28,6 +28,7 @@ export interface PostItem {
   account?: {
     accountName: string;
     platform: string;
+    accountType?: "personal" | "organization" | null;
   };
 }
 
@@ -138,8 +139,9 @@ export function PostCard({
               LinkedIn
             </span>
             {post.account?.accountName && (
-              <span className="text-xs text-slate-400">
-                • {post.account.accountName}
+              <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-700">
+                {post.account.accountType === "organization" ? "🏢 Page: " : "👤 Profile: "}
+                {post.account.accountName}
               </span>
             )}
           </div>

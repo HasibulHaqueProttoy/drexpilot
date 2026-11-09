@@ -86,8 +86,14 @@ export function createMcpServer(): McpServer {
         .string()
         .optional()
         .describe("IANA timezone string, e.g. 'Asia/Dhaka', 'America/New_York'. If omitted, default timezone is used."),
+      target: z
+        .string()
+        .optional()
+        .describe(
+          "Publishing destination: 'personal' for Personal Profile, 'organization' for Company Page, or specific Account Name/ID. Defaults to personal profile."
+        ),
     },
-    async ({ platform, content, scheduled_at, timezone }) => {
+    async ({ platform, content, scheduled_at, timezone, target }) => {
       // 1. Platform validation
       const normalizedPlatform = platform.toLowerCase().trim();
       if (normalizedPlatform !== "linkedin") {
@@ -155,13 +161,40 @@ export function createMcpServer(): McpServer {
         };
       }
 
-      // 5. Confirm LinkedIn is connected
-      const account = await db.query.socialAccounts.findFirst({
-        where: and(
-          eq(socialAccounts.platform, normalizedPlatform),
-          eq(socialAccounts.status, "connected")
-        ),
-      });
+      // 5. Confirm LinkedIn is connected and resolve target profile/page
+      let account = null;
+      if (target) {
+        const lowerTarget = target.toLowerCase().trim();
+        const accounts = await db.query.socialAccounts.findMany({
+          where: and(
+            eq(socialAccounts.platform, normalizedPlatform),
+            eq(socialAccounts.status, "connected")
+          ),
+        });
+
+        if (lowerTarget === "organization" || lowerTarget === "page" || lowerTarget === "company") {
+          account = accounts.find((a) => a.accountType === "organization") || null;
+        } else if (lowerTarget === "personal" || lowerTarget === "profile") {
+          account = accounts.find((a) => a.accountType === "personal") || null;
+        } else {
+          account =
+            accounts.find(
+              (a) =>
+                a.accountName.toLowerCase().includes(lowerTarget) ||
+                a.accountId === target ||
+                a.id === target
+            ) || null;
+        }
+      }
+
+      if (!account) {
+        account = await db.query.socialAccounts.findFirst({
+          where: and(
+            eq(socialAccounts.platform, normalizedPlatform),
+            eq(socialAccounts.status, "connected")
+          ),
+        });
+      }
 
       if (!account) {
         return {
@@ -205,6 +238,7 @@ export function createMcpServer(): McpServer {
                 timezone: post.timezone,
                 content_preview: post.content.length > 80 ? post.content.substring(0, 80) + "..." : post.content,
                 account_name: account.accountName,
+                account_type: account.accountType,
               },
               null,
               2
@@ -221,8 +255,14 @@ export function createMcpServer(): McpServer {
     {
       platform: z.string().describe("Target social media platform. MVP currently supports 'linkedin'."),
       content: z.string().describe("The text content of the post to publish immediately."),
+      target: z
+        .string()
+        .optional()
+        .describe(
+          "Publishing destination: 'personal' for Personal Profile, 'organization' for Company Page, or specific Account Name/ID."
+        ),
     },
-    async ({ platform, content }) => {
+    async ({ platform, content, target }) => {
       const normalizedPlatform = platform.toLowerCase().trim();
       if (normalizedPlatform !== "linkedin") {
         return {
@@ -240,13 +280,35 @@ export function createMcpServer(): McpServer {
         };
       }
 
-      // Check account
-      const account = await db.query.socialAccounts.findFirst({
+      // Check account and resolve target
+      const accounts = await db.query.socialAccounts.findMany({
         where: and(
           eq(socialAccounts.platform, normalizedPlatform),
           eq(socialAccounts.status, "connected")
         ),
       });
+
+      let account = null;
+      if (target) {
+        const lowerTarget = target.toLowerCase().trim();
+        if (lowerTarget === "organization" || lowerTarget === "page" || lowerTarget === "company") {
+          account = accounts.find((a) => a.accountType === "organization") || null;
+        } else if (lowerTarget === "personal" || lowerTarget === "profile") {
+          account = accounts.find((a) => a.accountType === "personal") || null;
+        } else {
+          account =
+            accounts.find(
+              (a) =>
+                a.accountName.toLowerCase().includes(lowerTarget) ||
+                a.accountId === target ||
+                a.id === target
+            ) || null;
+        }
+      }
+
+      if (!account) {
+        account = accounts[0] || null;
+      }
 
       if (!account) {
         return {
@@ -540,6 +602,44 @@ export function createMcpServer(): McpServer {
                 post_id,
                 status: "cancelled",
                 message: "Scheduled post was successfully cancelled.",
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    }
+  );
+
+  // Tool 7: list_connected_targets
+  server.tool(
+    "list_connected_targets",
+    {},
+    async () => {
+      const accounts = await db.query.socialAccounts.findMany({
+        where: eq(socialAccounts.status, "connected"),
+      });
+
+      const targets = accounts.map((a) => ({
+        id: a.id,
+        platform: a.platform,
+        account_name: a.accountName,
+        account_type: a.accountType, // 'personal' or 'organization'
+        account_id: a.accountId,
+        status: a.status,
+      }));
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                total_connected: targets.length,
+                personal_profiles: targets.filter((t) => t.account_type === "personal"),
+                company_pages: targets.filter((t) => t.account_type === "organization"),
+                targets,
               },
               null,
               2

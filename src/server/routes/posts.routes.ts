@@ -10,6 +10,7 @@ import { getDefaultTimezone } from "../services/settings.service.js";
 
 const createPostSchema = z.object({
   platform: z.string().default("linkedin"),
+  social_account_id: z.string().optional(),
   content: z.string().min(1),
   scheduled_at: z.string(),
   timezone: z.string().optional(),
@@ -64,6 +65,7 @@ export const postsRoutes: FastifyPluginAsync = async (fastify) => {
           columns: {
             id: true,
             accountName: true,
+            accountType: true,
             platform: true,
             status: true,
           },
@@ -85,7 +87,7 @@ export const postsRoutes: FastifyPluginAsync = async (fastify) => {
       return;
     }
 
-    const { platform, content, scheduled_at, timezone } = parseResult.data;
+    const { platform, content, scheduled_at, timezone, social_account_id } = parseResult.data;
     const publisher = PublisherFactory.getPublisher(platform);
     const validation = publisher.validateContent(content);
     if (!validation.valid) {
@@ -105,9 +107,18 @@ export const postsRoutes: FastifyPluginAsync = async (fastify) => {
       return;
     }
 
-    const account = await db.query.socialAccounts.findFirst({
-      where: and(eq(socialAccounts.platform, platform), eq(socialAccounts.status, "connected")),
-    });
+    let account = null;
+    if (social_account_id) {
+      account = await db.query.socialAccounts.findFirst({
+        where: and(eq(socialAccounts.id, social_account_id), eq(socialAccounts.status, "connected")),
+      });
+    }
+
+    if (!account) {
+      account = await db.query.socialAccounts.findFirst({
+        where: and(eq(socialAccounts.platform, platform), eq(socialAccounts.status, "connected")),
+      });
+    }
 
     if (!account) {
       reply.code(400).send({ error: `${platform} account is not connected. Please connect your account first.` });

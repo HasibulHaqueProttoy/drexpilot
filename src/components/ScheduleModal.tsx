@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { X, AlertCircle, PlusCircle } from "lucide-react";
+import { useState, useEffect } from "react";
+import { X, AlertCircle, PlusCircle, Building2, User } from "lucide-react";
 
 export function ScheduleModal({
   isOpen,
@@ -21,8 +21,28 @@ export function ScheduleModal({
   const [date, setDate] = useState(initialDate);
   const [time, setTime] = useState("10:00");
   const [timezone, setTimezone] = useState(defaultTimezone);
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      fetch("/api/auth/status")
+        .then((res) => res.json())
+        .then((data) => {
+          const list = [
+            ...(data.personalProfiles || []),
+            ...(data.companyPages || []),
+          ];
+          setAccounts(list);
+          if (list.length > 0) {
+            setSelectedAccountId(list[0].id);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -58,6 +78,7 @@ export function ScheduleModal({
           content,
           scheduled_at: targetDate.toISOString(),
           timezone,
+          social_account_id: selectedAccountId || undefined,
         }),
       });
 
@@ -100,6 +121,26 @@ export function ScheduleModal({
         )}
 
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-1">Publish To</label>
+            <select
+              value={selectedAccountId}
+              onChange={(e) => setSelectedAccountId(e.target.value)}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+            >
+              {accounts.length === 0 ? (
+                <option value="">Default Connected Account</option>
+              ) : (
+                accounts.map((acc) => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.accountType === "organization" ? "🏢 Company Page: " : "👤 Personal Profile: "}
+                    {acc.accountName}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+
           <div>
             <div className="flex justify-between items-center mb-1">
               <label className="text-xs font-medium text-slate-700">Content</label>
