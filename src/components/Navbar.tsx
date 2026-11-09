@@ -57,7 +57,6 @@ export function Navbar({ onRefresh }: { onRefresh?: () => void }) {
             </div>
             <div>
               <span className="font-bold text-slate-900 text-lg leading-tight block">DrexPilot</span>
-              <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider block">AI Social Scheduler</span>
             </div>
           </Link>
 
