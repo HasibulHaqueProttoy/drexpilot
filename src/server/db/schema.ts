@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, text, timestamp, index, jsonb } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
 export const users = pgTable(
@@ -48,6 +48,9 @@ export const scheduledPosts = pgTable(
     content: text("content").notNull(),
     scheduledAt: timestamp("scheduled_at", { withTimezone: true }).notNull(),
     timezone: varchar("timezone", { length: 100 }).notNull().default("Asia/Dhaka"),
+    mediaType: varchar("media_type", { length: 50 }).notNull().default("none"), // 'none' | 'image' | 'video' | 'carousel'
+    mediaUrls: jsonb("media_urls").$type<string[]>().default([]),
+    mediaTitle: varchar("media_title", { length: 255 }),
     status: varchar("status", { length: 50 }).notNull().default("scheduled"), // 'scheduled' | 'publishing' | 'published' | 'failed' | 'cancelled'
     externalPostId: varchar("external_post_id", { length: 255 }),
     publishedAt: timestamp("published_at", { withTimezone: true }),

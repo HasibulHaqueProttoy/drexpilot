@@ -15,12 +15,18 @@ const createPostSchema = z.object({
   content: z.string().min(1),
   scheduled_at: z.string(),
   timezone: z.string().optional(),
+  media_type: z.enum(["none", "image", "video", "carousel"]).default("none"),
+  media_urls: z.array(z.string()).optional(),
+  media_title: z.string().optional(),
 });
 
 const updatePostSchema = z.object({
   content: z.string().min(1).optional(),
   scheduled_at: z.string().optional(),
   timezone: z.string().optional(),
+  media_type: z.enum(["none", "image", "video", "carousel"]).optional(),
+  media_urls: z.array(z.string()).optional(),
+  media_title: z.string().optional(),
 });
 
 export const postsRoutes: FastifyPluginAsync = async (fastify) => {
@@ -90,9 +96,22 @@ export const postsRoutes: FastifyPluginAsync = async (fastify) => {
       return;
     }
 
-    const { platform, content, scheduled_at, timezone, social_account_id } = parseResult.data;
+    const {
+      platform,
+      content,
+      scheduled_at,
+      timezone,
+      social_account_id,
+      media_type,
+      media_urls,
+      media_title,
+    } = parseResult.data;
     const publisher = PublisherFactory.getPublisher(platform);
-    const validation = publisher.validateContent(content);
+    const validation = publisher.validateContent(content, {
+      mediaType: media_type,
+      mediaUrls: media_urls,
+      mediaTitle: media_title,
+    });
     if (!validation.valid) {
       reply.code(400).send({ error: validation.error });
       return;
@@ -136,6 +155,9 @@ export const postsRoutes: FastifyPluginAsync = async (fastify) => {
         content,
         scheduledAt: scheduledDate,
         timezone: resolvedTz,
+        mediaType: media_type || "none",
+        mediaUrls: media_urls || [],
+        mediaTitle: media_title || null,
         status: "scheduled",
       })
       .returning();

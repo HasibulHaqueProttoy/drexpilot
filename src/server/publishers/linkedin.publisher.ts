@@ -1,4 +1,4 @@
-import type { IPublisher, PublishResult, ContentValidationResult } from "./publisher.interface.js";
+import type { IPublisher, PublishResult, ContentValidationResult, PostMediaOptions } from "./publisher.interface.js";
 import { type SocialAccount, socialAccounts } from "../db/schema.js";
 import { decrypt, encrypt } from "../security/crypto.js";
 import { db } from "../db/index.js";
@@ -29,13 +29,198 @@ export function getCandidateLinkedInVersions(): string[] {
   return Array.from(new Set(versions));
 }
 
+async function downloadMediaBuffer(url: string): Promise<{ buffer: Buffer; contentType: string }> {
+  if (url.startsWith("data:")) {
+    const matches = url.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) {
+      throw new Error("Invalid base64 data URI format");
+    }
+    const contentType = matches[1];
+    const buffer = Buffer.from(matches[2], "base64");
+    return { buffer, contentType };
+  }
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Failed to download media file from URL (${res.status}): ${url}`);
+  }
+  const arrayBuffer = await res.arrayBuffer();
+  const contentType = res.headers.get("content-type") || "application/octet-stream";
+  return { buffer: Buffer.from(arrayBuffer), contentType };
+}
+
+async function uploadLinkedInImage(accessToken: string, ownerUrn: string, url: string): Promise<string> {
+  const { buffer, contentType } = await downloadMediaBuffer(url);
+  const version = getCandidateLinkedInVersions()[0];
+
+  // 1. Initialize image upload
+  const initRes = await fetch("https://api.linkedin.com/rest/images?action=initializeUpload", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "LinkedIn-Version": version,
+      "X-Restli-Protocol-Version": "2.0.0",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      initializeUploadRequest: {
+        owner: ownerUrn,
+      },
+    }),
+  });
+
+  if (!initRes.ok) {
+    const errText = await initRes.text();
+    throw new Error(`LinkedIn Image initializeUpload failed (${initRes.status}): ${errText}`);
+  }
+
+  const initData = (await initRes.json()) as {
+    value?: { uploadUrl?: string; image?: string };
+  };
+
+  const uploadUrl = initData.value?.uploadUrl;
+  const imageUrn = initData.value?.image;
+
+  if (!uploadUrl || !imageUrn) {
+    throw new Error("LinkedIn image initializeUpload did not return uploadUrl or image URN");
+  }
+
+  // 2. Upload binary bytes
+  const uploadRes = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": contentType || "image/jpeg",
+    },
+    body: new Uint8Array(buffer),
+  });
+
+  if (!uploadRes.ok) {
+    const errText = await uploadRes.text();
+    throw new Error(`Uploading image binary to LinkedIn failed (${uploadRes.status}): ${errText}`);
+  }
+
+  return imageUrn;
+}
+
+async function uploadLinkedInDocument(accessToken: string, ownerUrn: string, url: string, title?: string | null): Promise<string> {
+  const { buffer } = await downloadMediaBuffer(url);
+  const version = getCandidateLinkedInVersions()[0];
+
+  // 1. Initialize document upload
+  const initRes = await fetch("https://api.linkedin.com/rest/documents?action=initializeUpload", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "LinkedIn-Version": version,
+      "X-Restli-Protocol-Version": "2.0.0",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      initializeUploadRequest: {
+        owner: ownerUrn,
+      },
+    }),
+  });
+
+  if (!initRes.ok) {
+    const errText = await initRes.text();
+    throw new Error(`LinkedIn Document (Carousel) initializeUpload failed (${initRes.status}): ${errText}`);
+  }
+
+  const initData = (await initRes.json()) as {
+    value?: { uploadUrl?: string; document?: string };
+  };
+
+  const uploadUrl = initData.value?.uploadUrl;
+  const documentUrn = initData.value?.document;
+
+  if (!uploadUrl || !documentUrn) {
+    throw new Error("LinkedIn document initializeUpload did not return uploadUrl or document URN");
+  }
+
+  // 2. Upload binary bytes
+  const uploadRes = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/pdf",
+    },
+    body: new Uint8Array(buffer),
+  });
+
+  if (!uploadRes.ok) {
+    const errText = await uploadRes.text();
+    throw new Error(`Uploading PDF document to LinkedIn failed (${uploadRes.status}): ${errText}`);
+  }
+
+  return documentUrn;
+}
+
+async function uploadLinkedInVideo(accessToken: string, ownerUrn: string, url: string): Promise<string> {
+  const { buffer, contentType } = await downloadMediaBuffer(url);
+  const version = getCandidateLinkedInVersions()[0];
+
+  // 1. Initialize video upload
+  const initRes = await fetch("https://api.linkedin.com/rest/videos?action=initializeUpload", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "LinkedIn-Version": version,
+      "X-Restli-Protocol-Version": "2.0.0",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      initializeUploadRequest: {
+        owner: ownerUrn,
+        fileSizeBytes: buffer.length,
+        uploadCaptions: false,
+        uploadThumbnail: false,
+      },
+    }),
+  });
+
+  if (!initRes.ok) {
+    const errText = await initRes.text();
+    throw new Error(`LinkedIn Video initializeUpload failed (${initRes.status}): ${errText}`);
+  }
+
+  const initData = (await initRes.json()) as {
+    value?: {
+      uploadInstructions?: Array<{ uploadUrl?: string }>;
+      video?: string;
+    };
+  };
+
+  const uploadUrl = initData.value?.uploadInstructions?.[0]?.uploadUrl;
+  const videoUrn = initData.value?.video;
+
+  if (!uploadUrl || !videoUrn) {
+    throw new Error("LinkedIn video initializeUpload did not return uploadUrl or video URN");
+  }
+
+  // 2. Upload video binary
+  const uploadRes = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": contentType || "video/mp4",
+    },
+    body: new Uint8Array(buffer),
+  });
+
+  if (!uploadRes.ok) {
+    const errText = await uploadRes.text();
+    throw new Error(`Uploading video binary to LinkedIn failed (${uploadRes.status}): ${errText}`);
+  }
+
+  return videoUrn;
+}
+
 export class LinkedInPublisher implements IPublisher {
   readonly platform = "linkedin";
   private static readonly MAX_CHARACTERS = 3000;
   private static readonly POSTS_ENDPOINT = "https://api.linkedin.com/rest/posts";
   private static readonly TOKEN_ENDPOINT = "https://www.linkedin.com/oauth/v2/accessToken";
 
-  validateContent(content: string): ContentValidationResult {
+  validateContent(content: string, media?: PostMediaOptions): ContentValidationResult {
     if (!content || typeof content !== "string") {
       return { valid: false, error: "Content must be a non-empty string" };
     }
@@ -52,11 +237,20 @@ export class LinkedInPublisher implements IPublisher {
       };
     }
 
+    if (media && media.mediaType && media.mediaType !== "none") {
+      if (!media.mediaUrls || media.mediaUrls.length === 0) {
+        return {
+          valid: false,
+          error: `Media type '${media.mediaType}' was specified, but no media URLs were provided.`,
+        };
+      }
+    }
+
     return { valid: true };
   }
 
-  async publish(account: SocialAccount, content: string): Promise<PublishResult> {
-    const validation = this.validateContent(content);
+  async publish(account: SocialAccount, content: string, media?: PostMediaOptions): Promise<PublishResult> {
+    const validation = this.validateContent(content, media);
     if (!validation.valid) {
       throw new Error(`Content validation failed: ${validation.error}`);
     }
@@ -96,6 +290,8 @@ export class LinkedInPublisher implements IPublisher {
           mock: true,
           id: mockPostId,
           commentary: content,
+          mediaType: media?.mediaType || "none",
+          mediaUrls: media?.mediaUrls || [],
           timestamp: new Date().toISOString(),
         },
       };
@@ -105,7 +301,52 @@ export class LinkedInPublisher implements IPublisher {
     const authorUrn = account.accountType === "organization"
       ? `urn:li:organization:${account.accountId}`
       : `urn:li:person:${account.accountId}`;
-    const payload = {
+
+    // Process Rich Media uploads if present
+    let contentPayload: any = undefined;
+
+    if (media && media.mediaType && media.mediaType !== "none" && media.mediaUrls && media.mediaUrls.length > 0) {
+      if (media.mediaType === "image") {
+        if (media.mediaUrls.length === 1) {
+          const imageUrn = await uploadLinkedInImage(accessToken, authorUrn, media.mediaUrls[0]);
+          contentPayload = {
+            media: {
+              id: imageUrn,
+              title: media.mediaTitle || undefined,
+            },
+          };
+        } else {
+          const imageUrns: string[] = [];
+          for (const imgUrl of media.mediaUrls) {
+            const urn = await uploadLinkedInImage(accessToken, authorUrn, imgUrl);
+            imageUrns.push(urn);
+          }
+          contentPayload = {
+            multiImage: {
+              images: imageUrns.map((id) => ({ id })),
+            },
+          };
+        }
+      } else if (media.mediaType === "carousel") {
+        const documentUrn = await uploadLinkedInDocument(accessToken, authorUrn, media.mediaUrls[0], media.mediaTitle);
+        contentPayload = {
+          media: {
+            id: documentUrn,
+            title: media.mediaTitle || "Document / Slide Carousel",
+          },
+        };
+      } else if (media.mediaType === "video") {
+        const videoUrn = await uploadLinkedInVideo(accessToken, authorUrn, media.mediaUrls[0]);
+        contentPayload = {
+          media: {
+            id: videoUrn,
+            title: media.mediaTitle || undefined,
+          },
+        };
+      }
+    }
+
+    const payload: any = {
       author: authorUrn,
       commentary: content,
       visibility: "PUBLIC",
@@ -117,6 +358,10 @@ export class LinkedInPublisher implements IPublisher {
       lifecycleState: "PUBLISHED",
       isReshareDisabledByAuthor: false,
     };
+
+    if (contentPayload) {
+      payload.content = contentPayload;
+    }
 
     let response: Response | null = null;
     const versionsToTry = getCandidateLinkedInVersions();

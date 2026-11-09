@@ -92,8 +92,24 @@ export function createMcpServer(): McpServer {
         .describe(
           "Publishing destination: 'personal' for Personal Profile, 'organization' for Company Page, or specific Account Name/ID. Defaults to personal profile."
         ),
+      media_type: z
+        .enum(["none", "image", "video", "carousel"])
+        .default("none")
+        .describe(
+          "Type of rich media attached: 'none' for text-only, 'image' for single or multiple photos, 'video' for MP4 video, or 'carousel' for PDF document rendered as an interactive LinkedIn slide carousel."
+        ),
+      media_urls: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Array of image URLs, video URL, or PDF document URL (or base64 data URIs) to attach to the LinkedIn post."
+        ),
+      media_title: z
+        .string()
+        .optional()
+        .describe("Title for the document / carousel slides or media attachment."),
     },
-    async ({ platform, content, scheduled_at, timezone, target }) => {
+    async ({ platform, content, scheduled_at, timezone, target, media_type, media_urls, media_title }) => {
       // 1. Platform validation
       const normalizedPlatform = platform.toLowerCase().trim();
       if (normalizedPlatform !== "linkedin") {
@@ -110,7 +126,11 @@ export function createMcpServer(): McpServer {
 
       // 2. Validate publisher & content
       const publisher = PublisherFactory.getPublisher(normalizedPlatform);
-      const validation = publisher.validateContent(content);
+      const validation = publisher.validateContent(content, {
+        mediaType: media_type,
+        mediaUrls: media_urls,
+        mediaTitle: media_title,
+      });
       if (!validation.valid) {
         return {
           isError: true,
@@ -217,6 +237,9 @@ export function createMcpServer(): McpServer {
           content,
           scheduledAt: scheduledDate,
           timezone: resolvedTz,
+          mediaType: media_type || "none",
+          mediaUrls: media_urls || [],
+          mediaTitle: media_title || null,
           status: "scheduled",
         })
         .returning();
@@ -261,8 +284,22 @@ export function createMcpServer(): McpServer {
         .describe(
           "Publishing destination: 'personal' for Personal Profile, 'organization' for Company Page, or specific Account Name/ID."
         ),
+      media_type: z
+        .enum(["none", "image", "video", "carousel"])
+        .default("none")
+        .describe(
+          "Type of rich media attached: 'none' for text-only, 'image' for photo(s), 'video' for MP4 video, or 'carousel' for PDF document."
+        ),
+      media_urls: z
+        .array(z.string())
+        .optional()
+        .describe("Array of image URLs, video URL, or PDF document URL (or base64 data URIs)."),
+      media_title: z
+        .string()
+        .optional()
+        .describe("Title for the document / carousel slides or media attachment."),
     },
-    async ({ platform, content, target }) => {
+    async ({ platform, content, target, media_type, media_urls, media_title }) => {
       const normalizedPlatform = platform.toLowerCase().trim();
       if (normalizedPlatform !== "linkedin") {
         return {
@@ -272,7 +309,11 @@ export function createMcpServer(): McpServer {
       }
 
       const publisher = PublisherFactory.getPublisher(normalizedPlatform);
-      const validation = publisher.validateContent(content);
+      const validation = publisher.validateContent(content, {
+        mediaType: media_type,
+        mediaUrls: media_urls,
+        mediaTitle: media_title,
+      });
       if (!validation.valid) {
         return {
           isError: true,
@@ -331,6 +372,9 @@ export function createMcpServer(): McpServer {
           content,
           scheduledAt: new Date(),
           timezone: await getDefaultTimezone(),
+          mediaType: media_type || "none",
+          mediaUrls: media_urls || [],
+          mediaTitle: media_title || null,
           status: "scheduled",
         })
         .returning();
@@ -402,6 +446,9 @@ export function createMcpServer(): McpServer {
         content_preview: p.content.length > 100 ? p.content.substring(0, 100) + "..." : p.content,
         scheduled_at_utc: p.scheduledAt.toISOString(),
         timezone: p.timezone,
+        media_type: p.mediaType,
+        media_urls: p.mediaUrls,
+        media_title: p.mediaTitle,
         published_at: p.publishedAt ? p.publishedAt.toISOString() : null,
         external_post_id: p.externalPostId,
         error_message: p.errorMessage,
@@ -434,8 +481,11 @@ export function createMcpServer(): McpServer {
       content: z.string().optional().describe("New text content for the post."),
       scheduled_at: z.string().optional().describe("New ISO 8601 publishing time."),
       timezone: z.string().optional().describe("New IANA timezone identifier."),
+      media_type: z.enum(["none", "image", "video", "carousel"]).optional().describe("New media type."),
+      media_urls: z.array(z.string()).optional().describe("New media URLs."),
+      media_title: z.string().optional().describe("New media title."),
     },
-    async ({ post_id, content, scheduled_at, timezone }) => {
+    async ({ post_id, content, scheduled_at, timezone, media_type, media_urls, media_title }) => {
       const post = await db.query.scheduledPosts.findFirst({
         where: eq(scheduledPosts.id, post_id),
       });
@@ -485,6 +535,16 @@ export function createMcpServer(): McpServer {
             content: [{ type: "text", text: `Invalid IANA timezone identifier: '${timezone}'` }],
           };
         }
+      }
+
+      if (media_type !== undefined) {
+        updates.mediaType = media_type;
+      }
+      if (media_urls !== undefined) {
+        updates.mediaUrls = media_urls;
+      }
+      if (media_title !== undefined) {
+        updates.mediaTitle = media_title;
       }
 
       let newDate: Date | null = null;

@@ -22,6 +22,13 @@
       "when": 1794227487378,
       "tag": "0002_round_quicksilver",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794229576419,
+      "tag": "0003_next_gwen_stacy",
+      "breakpoints": true
     }
   ]
 }

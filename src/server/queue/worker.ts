@@ -97,8 +97,12 @@ export async function executePublish(postId: string, jobId?: string): Promise<{ 
   try {
     const publisher = PublisherFactory.getPublisher(post.platform);
 
-    // 5. Execute publish
-    const result = await publisher.publish(account, post.content);
+    // 5. Execute publish with optional rich media
+    const result = await publisher.publish(account, post.content, {
+      mediaType: (post.mediaType as any) || "none",
+      mediaUrls: post.mediaUrls || [],
+      mediaTitle: post.mediaTitle,
+    });
 
     // 6. Update database on success
     const now = new Date();

@@ -30,6 +30,9 @@ export interface PostItem {
     platform: string;
     accountType?: "personal" | "organization" | null;
   };
+  mediaType?: "none" | "image" | "video" | "carousel" | null;
+  mediaUrls?: string[] | null;
+  mediaTitle?: string | null;
 }
 
 export function PostCard({
@@ -142,6 +145,14 @@ export function PostCard({
               <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-700">
                 {post.account.accountType === "organization" ? "🏢 Page: " : "👤 Profile: "}
                 {post.account.accountName}
+              </span>
+            )}
+            {post.mediaType && post.mediaType !== "none" && (
+              <span className="inline-flex items-center gap-1 rounded bg-purple-50 px-2 py-0.5 text-[11px] font-medium text-purple-700 border border-purple-200">
+                {post.mediaType === "carousel" && "📑 Carousel"}
+                {post.mediaType === "image" && `🖼️ Image (${post.mediaUrls?.length || 1})`}
+                {post.mediaType === "video" && "🎬 Video"}
+                {post.mediaTitle && ` • ${post.mediaTitle}`}
               </span>
             )}
           </div>

@@ -23,6 +23,9 @@ export function ScheduleModal({
   const [timezone, setTimezone] = useState(defaultTimezone);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
+  const [mediaType, setMediaType] = useState<"none" | "image" | "video" | "carousel">("none");
+  const [mediaUrls, setMediaUrls] = useState<string>("");
+  const [mediaTitle, setMediaTitle] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -79,6 +82,9 @@ export function ScheduleModal({
           scheduled_at: targetDate.toISOString(),
           timezone,
           social_account_id: selectedAccountId || undefined,
+          media_type: mediaType,
+          media_urls: mediaUrls ? mediaUrls.split(",").map((s) => s.trim()).filter(Boolean) : [],
+          media_title: mediaTitle || undefined,
         }),
       });
 
@@ -200,6 +206,72 @@ export function ScheduleModal({
               <option value="Asia/Singapore">Asia/Singapore (GMT+8)</option>
               <option value="Asia/Dubai">Asia/Dubai (GMT+4)</option>
             </select>
+          </div>
+
+          {/* Optional Rich Media */}
+          <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 space-y-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Media Attachment (Optional)
+              </label>
+              <select
+                value={mediaType}
+                onChange={(e) => setMediaType(e.target.value as any)}
+                className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+              >
+                <option value="none">None (Text-only post)</option>
+                <option value="image">🖼️ Image(s) (Single or Multi-Photo)</option>
+                <option value="carousel">📑 Carousel Slide Deck (PDF Document)</option>
+                <option value="video">🎬 Video (MP4)</option>
+              </select>
+            </div>
+
+            {mediaType !== "none" && (
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                    {mediaType === "carousel"
+                      ? "PDF Document URL"
+                      : mediaType === "video"
+                      ? "MP4 Video URL"
+                      : "Image URL(s) (comma-separated for multiple)"}
+                  </label>
+                  <input
+                    type="url"
+                    value={mediaUrls}
+                    onChange={(e) => setMediaUrls(e.target.value)}
+                    placeholder={
+                      mediaType === "carousel"
+                        ? "https://example.com/slides.pdf"
+                        : mediaType === "video"
+                        ? "https://example.com/video.mp4"
+                        : "https://example.com/image1.jpg, https://example.com/image2.jpg"
+                    }
+                    className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                    required
+                  />
+                </div>
+
+                {(mediaType === "carousel" || mediaType === "image" || mediaType === "video") && (
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      {mediaType === "carousel" ? "Carousel Deck Title" : "Media Title / Alt (Optional)"}
+                    </label>
+                    <input
+                      type="text"
+                      value={mediaTitle}
+                      onChange={(e) => setMediaTitle(e.target.value)}
+                      placeholder={
+                        mediaType === "carousel"
+                          ? "e.g. 5 Growth Strategies for 2026"
+                          : "Optional title or caption"
+                      }
+                      className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                    />
+                  </div>
+                )}
+              </>
+            )}
           </div>
 
           <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
