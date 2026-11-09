@@ -9,7 +9,7 @@ import { env } from "../config/env.js";
 export const authRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /api/auth/linkedin - Initiate OAuth flow
   fastify.get("/linkedin", async (request, reply) => {
-    // Generate secure state for CSRF protection
+    const query = request.query as { with_pages?: string };
     const state = crypto.randomBytes(24).toString("hex");
 
     reply.setCookie("oauth_state", state, {
@@ -20,13 +20,18 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       maxAge: 600, // 10 minutes
     });
 
+    // If with_pages is requested, include organization scopes (requires Community Management API product)
+    // Default to personal profile scopes (Share on LinkedIn + Sign In with LinkedIn) which are instantly approved
+    const scopes = query.with_pages === "true"
+      ? "openid profile email w_member_social w_organization_social r_organization_social"
+      : "openid profile email w_member_social";
+
     const params = new URLSearchParams({
       response_type: "code",
       client_id: env.LINKEDIN_CLIENT_ID,
       redirect_uri: env.LINKEDIN_REDIRECT_URI,
       state,
-      // Request both Personal Profile and Company Page publishing scopes
-      scope: "openid profile email w_member_social w_organization_social r_organization_social",
+      scope: scopes,
     });
 
     const authUrl = `https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`;

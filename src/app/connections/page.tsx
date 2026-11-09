@@ -207,7 +207,16 @@ function ConnectionsContent() {
             className="inline-flex items-center space-x-1.5 rounded-lg bg-[#0077b5] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[#006097] transition-colors"
           >
             <ExternalLink className="h-3.5 w-3.5" />
-            <span>Connect via LinkedIn OAuth 2.0</span>
+            <span>Connect Personal Profile</span>
+          </a>
+
+          <a
+            href="/api/auth/linkedin?with_pages=true"
+            className="inline-flex items-center space-x-1.5 rounded-lg border border-[#0077b5] text-[#0077b5] bg-white px-3 py-2 text-xs font-medium hover:bg-blue-50 transition-colors"
+            title="Requires Community Management API approved on your LinkedIn app"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            <span>Connect with Company Pages</span>
           </a>
 
           {status?.connected && (
