@@ -1,3 +1,6 @@
+import dns from "node:dns";
+dns.setDefaultResultOrder("ipv4first");
+
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { db, queryClient } from "./index.js";
 import path from "node:path";
