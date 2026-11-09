@@ -7,8 +7,10 @@ let bossInstance: PgBoss | null = null;
 
 export function getBoss(): PgBoss {
   if (!bossInstance) {
+    const isCloudDb = !env.DATABASE_URL.includes("localhost") && !env.DATABASE_URL.includes("127.0.0.1");
     bossInstance = new PgBoss({
       connectionString: env.DATABASE_URL,
+      ssl: isCloudDb ? { rejectUnauthorized: false } : undefined,
       archiveCompletedAfterSeconds: 60 * 60 * 24 * 7,
       deleteAfterDays: 14,
       retentionMinutes: 60 * 24 * 7,
