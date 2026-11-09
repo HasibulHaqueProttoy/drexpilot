@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import crypto from "node:crypto";
 import { db } from "../db/index.js";
 import { socialAccounts } from "../db/schema.js";
@@ -6,11 +6,43 @@ import { eq, and } from "drizzle-orm";
 import { encrypt } from "../security/crypto.js";
 import { env } from "../config/env.js";
 
+function getEffectiveRedirectUri(request: FastifyRequest): string {
+  // 1. Explicit production env override
+  if (process.env.LINKEDIN_REDIRECT_URI && !process.env.LINKEDIN_REDIRECT_URI.includes("localhost")) {
+    return process.env.LINKEDIN_REDIRECT_URI;
+  }
+  // 2. Render cloud automatic URL
+  if (process.env.RENDER_EXTERNAL_URL) {
+    return `${process.env.RENDER_EXTERNAL_URL.replace(/\/+$/, "")}/api/auth/linkedin/callback`;
+  }
+  // 3. Auto-detect from incoming request host
+  const host = (request.headers["x-forwarded-host"] || request.headers.host)?.toString();
+  const proto = (request.headers["x-forwarded-proto"] || "http").toString();
+  if (host && !host.includes("localhost") && !host.includes("127.0.0.1")) {
+    return `${proto}://${host}/api/auth/linkedin/callback`;
+  }
+  // 4. Default to configured env
+  return env.LINKEDIN_REDIRECT_URI;
+}
+
+function getEffectiveFrontendUrl(request: FastifyRequest): string {
+  if (process.env.RENDER_EXTERNAL_URL) {
+    return process.env.RENDER_EXTERNAL_URL.replace(/\/+$/, "");
+  }
+  const host = (request.headers["x-forwarded-host"] || request.headers.host)?.toString();
+  const proto = (request.headers["x-forwarded-proto"] || "http").toString();
+  if (host && !host.includes("localhost") && !host.includes("127.0.0.1")) {
+    return `${proto}://${host}`;
+  }
+  return env.FRONTEND_URL.replace(/\/+$/, "");
+}
+
 export const authRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /api/auth/linkedin - Initiate OAuth flow
   fastify.get("/linkedin", async (request, reply) => {
     const query = request.query as { with_pages?: string };
     const state = crypto.randomBytes(24).toString("hex");
+    const redirectUri = getEffectiveRedirectUri(request);
 
     reply.setCookie("oauth_state", state, {
       path: "/",
@@ -18,6 +50,14 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       secure: env.NODE_ENV === "production",
       sameSite: "lax",
       maxAge: 600, // 10 minutes
+    });
+
+    reply.setCookie("oauth_redirect_uri", redirectUri, {
+      path: "/",
+      httpOnly: true,
+      secure: env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 600,
     });
 
     // If with_pages is requested, include organization scopes (requires Community Management API product)
@@ -29,7 +69,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     const params = new URLSearchParams({
       response_type: "code",
       client_id: env.LINKEDIN_CLIENT_ID,
-      redirect_uri: env.LINKEDIN_REDIRECT_URI,
+      redirect_uri: redirectUri,
       state,
       scope: scopes,
     });
@@ -42,20 +82,22 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get("/linkedin/callback", async (request, reply) => {
     const query = request.query as { code?: string; state?: string; error?: string; error_description?: string };
     const savedState = request.cookies.oauth_state;
+    const redirectUri = request.cookies.oauth_redirect_uri || getEffectiveRedirectUri(request);
+    const frontendUrl = getEffectiveFrontendUrl(request);
 
     if (query.error) {
       console.error("[OAuth] LinkedIn returned error:", query.error, query.error_description);
-      return reply.redirect(`${env.FRONTEND_URL}/connections?error=${encodeURIComponent(query.error_description || query.error)}`);
+      return reply.redirect(`${frontendUrl}/connections?error=${encodeURIComponent(query.error_description || query.error)}`);
     }
 
     // CSRF verification
     if (!query.state || query.state !== savedState) {
       console.error("[OAuth] State mismatch or expired state");
-      return reply.redirect(`${env.FRONTEND_URL}/connections?error=${encodeURIComponent("Invalid or expired OAuth state (CSRF failure)")}`);
+      return reply.redirect(`${frontendUrl}/connections?error=${encodeURIComponent("Invalid or expired OAuth state (CSRF failure)")}`);
     }
 
     if (!query.code) {
-      return reply.redirect(`${env.FRONTEND_URL}/connections?error=Missing+authorization+code`);
+      return reply.redirect(`${frontendUrl}/connections?error=Missing+authorization+code`);
     }
 
     try {
@@ -63,7 +105,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       const tokenParams = new URLSearchParams({
         grant_type: "authorization_code",
         code: query.code,
-        redirect_uri: env.LINKEDIN_REDIRECT_URI,
+        redirect_uri: redirectUri,
         client_id: env.LINKEDIN_CLIENT_ID,
         client_secret: env.LINKEDIN_CLIENT_SECRET,
       });
@@ -224,10 +266,10 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         ? `Connected ${profile.name} and ${discoveredPagesCount} company page(s)!`
         : `Connected ${profile.name}!`;
 
-      return reply.redirect(`${env.FRONTEND_URL}/connections?connected=true&account=${encodeURIComponent(redirectMsg)}`);
+      return reply.redirect(`${frontendUrl}/connections?connected=true&account=${encodeURIComponent(redirectMsg)}`);
     } catch (err: any) {
       console.error("[OAuth] Callback exception:", err);
-      return reply.redirect(`${env.FRONTEND_URL}/connections?error=${encodeURIComponent(err.message || "OAuth processing failed")}`);
+      return reply.redirect(`${frontendUrl}/connections?error=${encodeURIComponent(err.message || "OAuth processing failed")}`);
     }
   });
 
