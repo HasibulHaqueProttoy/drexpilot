@@ -1,10 +1,35 @@
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { db, queryClient } from "./index.js";
+import path from "node:path";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+function getMigrationsFolder(): string {
+  const candidates = [
+    path.join(__dirname, "migrations"),
+    path.join(process.cwd(), "src/server/db/migrations"),
+    path.join(process.cwd(), "dist/server/db/migrations"),
+    path.join(process.cwd(), "migrations"),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate) && fs.existsSync(path.join(candidate, "meta", "_journal.json"))) {
+      return candidate;
+    }
+  }
+
+  // Default fallback
+  return candidates[0];
+}
 
 export async function runMigrations() {
-  console.log("Running database migrations...");
+  const migrationsFolder = getMigrationsFolder();
+  console.log(`Running database migrations from: ${migrationsFolder}...`);
   try {
-    await migrate(db, { migrationsFolder: "./src/server/db/migrations" });
+    await migrate(db, { migrationsFolder });
     console.log("Database migrations completed successfully.");
   } catch (error) {
     console.error("Migration failed:", error);

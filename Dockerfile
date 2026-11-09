@@ -29,6 +29,7 @@ RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/out ./out
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/src/server/db/migrations ./src/server/db/migrations
 COPY --from=builder /app/src/server/db/migrations ./dist/server/db/migrations
 COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
 
