@@ -7,6 +7,7 @@ import { PublisherFactory } from "../publishers/publisher.factory.js";
 import { schedulePostJob, reschedulePostJob, cancelPostJob } from "../queue/scheduler.js";
 import { executePublish } from "../queue/worker.js";
 import { getDefaultTimezone } from "../services/settings.service.js";
+import { requireAuth } from "./auth.routes.js";
 
 const createPostSchema = z.object({
   platform: z.string().default("linkedin"),
@@ -23,6 +24,8 @@ const updatePostSchema = z.object({
 });
 
 export const postsRoutes: FastifyPluginAsync = async (fastify) => {
+  fastify.addHook("preHandler", requireAuth);
+
   // GET /api/posts - List posts and dashboard metrics
   fastify.get("/", async (request, reply) => {
     const query = request.query as { status?: string; limit?: string; order?: string };

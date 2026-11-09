@@ -1,6 +1,21 @@
 import { pgTable, uuid, varchar, text, timestamp, index } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    email: varchar("email", { length: 255 }).notNull().unique(),
+    passwordHash: text("password_hash").notNull(),
+    name: varchar("name", { length: 255 }).notNull().default("Admin"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    emailIdx: index("users_email_idx").on(table.email),
+  })
+);
+
 export const socialAccounts = pgTable(
   "social_accounts",
   {
@@ -96,3 +111,5 @@ export type NewScheduledPost = typeof scheduledPosts.$inferInsert;
 export type PublishingLog = typeof publishingLogs.$inferSelect;
 export type NewPublishingLog = typeof publishingLogs.$inferInsert;
 export type AppSetting = typeof appSettings.$inferSelect;
+export type User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;

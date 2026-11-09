@@ -10,6 +10,7 @@ const envSchema = z.object({
   DATABASE_URL: z.string().url().default("postgres://hasibulprottoy@localhost:5433/postpilot"),
   TOKEN_ENCRYPTION_KEY: z.string().min(32).default("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"),
   COOKIE_SECRET: z.string().min(16).default("postpilot-cookie-secret-very-secure-key-32"),
+  JWT_SECRET: z.string().min(16).default("postpilot-jwt-super-secret-key-32-chars"),
   LINKEDIN_CLIENT_ID: z.string().default("mock_client_id"),
   LINKEDIN_CLIENT_SECRET: z.string().default("mock_client_secret"),
   LINKEDIN_REDIRECT_URI: z.string().default("http://localhost:3001/api/auth/linkedin/callback"),

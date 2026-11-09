@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Navbar } from "@/components/Navbar";
+import { AuthGuard } from "@/components/AuthGuard";
 import { Check, Copy, Globe, Terminal, Shield, Save } from "lucide-react";
 
 export default function SettingsPage() {
@@ -68,7 +69,8 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50">
+    <AuthGuard>
+      <div className="min-h-screen flex flex-col bg-slate-50">
       <Navbar />
 
       <main className="flex-1 mx-auto w-full max-w-4xl px-4 py-8 sm:px-6 space-y-6">
@@ -217,5 +219,6 @@ export default function SettingsPage() {
         </div>
       </main>
     </div>
+    </AuthGuard>
   );
 }

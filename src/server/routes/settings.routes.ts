@@ -1,12 +1,15 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { getDefaultTimezone, setDefaultTimezone, getAllSettings } from "../services/settings.service.js";
+import { requireAuth } from "./auth.routes.js";
 
 const timezoneSchema = z.object({
   timezone: z.string().min(1),
 });
 
 export const settingsRoutes: FastifyPluginAsync = async (fastify) => {
+  fastify.addHook("preHandler", requireAuth);
+
   // GET /api/settings - Get all application settings
   fastify.get("/", async () => {
     const settings = await getAllSettings();

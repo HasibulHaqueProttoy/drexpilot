@@ -1,10 +1,35 @@
-import type { FastifyPluginAsync, FastifyRequest } from "fastify";
+import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from "fastify";
 import crypto from "node:crypto";
 import { db } from "../db/index.js";
-import { socialAccounts } from "../db/schema.js";
+import { socialAccounts, users } from "../db/schema.js";
 import { eq, and } from "drizzle-orm";
 import { encrypt } from "../security/crypto.js";
+import { hashPassword, verifyPassword, generateToken, verifyToken, type UserPayload } from "../security/jwt.js";
 import { env } from "../config/env.js";
+
+export async function requireAuth(request: FastifyRequest, reply: FastifyReply) {
+  // If no users exist yet in database, allow setup flow
+  const anyUser = await db.query.users.findFirst();
+  if (!anyUser) {
+    return;
+  }
+
+  const cookieToken = request.cookies.auth_token;
+  const authHeader = request.headers.authorization;
+  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  const token = cookieToken || bearerToken;
+
+  if (!token) {
+    return reply.status(401).send({ error: "Authentication required" });
+  }
+
+  const payload = verifyToken(token);
+  if (!payload) {
+    return reply.status(401).send({ error: "Invalid or expired session" });
+  }
+
+  request.user = payload;
+}
 
 function getEffectiveRedirectUri(request: FastifyRequest): string {
   // 1. Explicit production env override
@@ -38,6 +63,137 @@ function getEffectiveFrontendUrl(request: FastifyRequest): string {
 }
 
 export const authRoutes: FastifyPluginAsync = async (fastify) => {
+  // GET /api/auth/setup-status - Check if any admin account exists
+  fastify.get("/setup-status", async () => {
+    const existing = await db.query.users.findFirst();
+    return { hasUsers: !!existing };
+  });
+
+  // POST /api/auth/register - Register admin/user account
+  fastify.post("/register", async (request, reply) => {
+    const body = request.body as { email?: string; password?: string; name?: string };
+    const email = body?.email?.trim().toLowerCase();
+    const password = body?.password;
+    const name = body?.name?.trim() || "Admin";
+
+    if (!email || !email.includes("@")) {
+      return reply.status(400).send({ error: "A valid email address is required" });
+    }
+    if (!password || password.length < 6) {
+      return reply.status(400).send({ error: "Password must be at least 6 characters long" });
+    }
+
+    const existing = await db.query.users.findFirst({
+      where: eq(users.email, email),
+    });
+    if (existing) {
+      return reply.status(400).send({ error: "An account with this email already exists" });
+    }
+
+    const passwordHash = await hashPassword(password);
+    const [newUser] = await db
+      .insert(users)
+      .values({
+        email,
+        passwordHash,
+        name,
+      })
+      .returning();
+
+    const userPayload: UserPayload = {
+      id: newUser.id,
+      email: newUser.email,
+      name: newUser.name,
+    };
+
+    const token = generateToken(userPayload);
+
+    reply.setCookie("auth_token", token, {
+      path: "/",
+      httpOnly: true,
+      secure: env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60, // 7 days
+    });
+
+    return {
+      success: true,
+      user: userPayload,
+      token,
+    };
+  });
+
+  // POST /api/auth/login - Sign in with email and password
+  fastify.post("/login", async (request, reply) => {
+    const body = request.body as { email?: string; password?: string };
+    const email = body?.email?.trim().toLowerCase();
+    const password = body?.password;
+
+    if (!email || !password) {
+      return reply.status(400).send({ error: "Email and password are required" });
+    }
+
+    const user = await db.query.users.findFirst({
+      where: eq(users.email, email),
+    });
+
+    if (!user) {
+      return reply.status(401).send({ error: "Invalid email or password" });
+    }
+
+    const valid = await verifyPassword(password, user.passwordHash);
+    if (!valid) {
+      return reply.status(401).send({ error: "Invalid email or password" });
+    }
+
+    const userPayload: UserPayload = {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+    };
+
+    const token = generateToken(userPayload);
+
+    reply.setCookie("auth_token", token, {
+      path: "/",
+      httpOnly: true,
+      secure: env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60, // 7 days
+    });
+
+    return {
+      success: true,
+      user: userPayload,
+      token,
+    };
+  });
+
+  // POST /api/auth/logout - Clear session
+  fastify.post("/logout", async (request, reply) => {
+    reply.clearCookie("auth_token", { path: "/" });
+    return { success: true, message: "Logged out successfully" };
+  });
+
+  // GET /api/auth/me - Current user profile
+  fastify.get("/me", async (request, reply) => {
+    const cookieToken = request.cookies.auth_token;
+    const authHeader = request.headers.authorization;
+    const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    const token = cookieToken || bearerToken;
+
+    if (!token) {
+      return reply.status(401).send({ error: "Unauthenticated" });
+    }
+
+    const payload = verifyToken(token);
+    if (!payload) {
+      return reply.status(401).send({ error: "Invalid or expired session" });
+    }
+
+    return { user: payload };
+  });
+
   // GET /api/auth/linkedin - Initiate OAuth flow
   fastify.get("/linkedin", async (request, reply) => {
     const query = request.query as { with_pages?: string };

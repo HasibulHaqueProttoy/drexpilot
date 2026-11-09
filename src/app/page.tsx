@@ -6,6 +6,7 @@ import { StatsCards } from "@/components/StatsCards";
 import { PostCard, type PostItem } from "@/components/PostCard";
 import { EditPostModal } from "@/components/EditPostModal";
 import { ScheduleModal } from "@/components/ScheduleModal";
+import { AuthGuard } from "@/components/AuthGuard";
 import { Plus, Calendar, Filter, AlertCircle, RefreshCw } from "lucide-react";
 import Link from "next/link";
 
@@ -87,7 +88,8 @@ export default function DashboardPage() {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50">
+    <AuthGuard>
+      <div className="min-h-screen flex flex-col bg-slate-50">
       <Navbar onRefresh={fetchDashboardData} />
 
       <main className="flex-1 mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 space-y-6">
@@ -205,5 +207,6 @@ export default function DashboardPage() {
         onCreated={fetchDashboardData}
       />
     </div>
+    </AuthGuard>
   );
 }

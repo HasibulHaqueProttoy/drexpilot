@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Calendar, Link2, Settings, Send, RefreshCw, CheckCircle2, AlertCircle } from "lucide-react";
+import { Calendar, Link2, Settings, Send, RefreshCw, CheckCircle2, AlertCircle, LogOut, User as UserIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface SocialStatus {
@@ -16,6 +16,7 @@ interface SocialStatus {
 export function Navbar({ onRefresh }: { onRefresh?: () => void }) {
   const pathname = usePathname();
   const [authStatus, setAuthStatus] = useState<SocialStatus | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ email: string; name: string } | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const fetchStatus = async () => {
@@ -32,7 +33,21 @@ export function Navbar({ onRefresh }: { onRefresh?: () => void }) {
 
   useEffect(() => {
     fetchStatus();
+    fetch("/api/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.user) setCurrentUser(data.user);
+      })
+      .catch(() => {});
   }, []);
+
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } finally {
+      window.location.href = "/login";
+    }
+  };
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -116,6 +131,24 @@ export function Navbar({ onRefresh }: { onRefresh?: () => void }) {
             <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin text-blue-600" : ""}`} />
             <span className="hidden sm:inline">Refresh</span>
           </button>
+
+          {/* User Profile & Logout */}
+          {currentUser && (
+            <div className="flex items-center space-x-2 pl-2 border-l border-slate-200">
+              <div className="hidden lg:flex flex-col text-right">
+                <span className="text-[11px] font-semibold text-slate-800 leading-tight">{currentUser.name}</span>
+                <span className="text-[10px] text-slate-400 font-mono leading-tight">{currentUser.email}</span>
+              </div>
+              <button
+                onClick={handleLogout}
+                title="Sign out of DrexPilot"
+                className="flex items-center space-x-1 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-md border border-slate-200 transition-colors"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Logout</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, Suspense } from "react";
 import { Navbar } from "@/components/Navbar";
+import { AuthGuard } from "@/components/AuthGuard";
 import { CheckCircle2, AlertCircle, ExternalLink, ShieldCheck, Unlink } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
@@ -265,13 +266,15 @@ function ConnectionsContent() {
 
 export default function ConnectionsPage() {
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50">
-      <Navbar />
-      <main className="flex-1 mx-auto w-full max-w-4xl px-4 py-8 sm:px-6">
-        <Suspense fallback={<div className="p-8 text-center text-xs text-slate-400">Loading connections...</div>}>
-          <ConnectionsContent />
-        </Suspense>
-      </main>
-    </div>
+    <AuthGuard>
+      <div className="min-h-screen flex flex-col bg-slate-50">
+        <Navbar />
+        <main className="flex-1 mx-auto w-full max-w-4xl px-4 py-8 sm:px-6">
+          <Suspense fallback={<div className="p-8 text-center text-xs text-slate-400">Loading connections...</div>}>
+            <ConnectionsContent />
+          </Suspense>
+        </main>
+      </div>
+    </AuthGuard>
   );
 }
