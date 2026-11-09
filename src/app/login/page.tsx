@@ -73,9 +73,11 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-blue-600 text-white shadow-md mb-3">
-            <Send className="h-6 w-6" />
-          </div>
+          <img
+            src="/logo.png"
+            alt="DrexPilot Logo"
+            className="h-16 w-16 rounded-2xl shadow-md mx-auto mb-3 object-cover"
+          />
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">DrexPilot</h1>
           <p className="text-xs text-slate-500 mt-1">
             {hasUsers === false

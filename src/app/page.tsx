@@ -169,7 +169,7 @@ export default function DashboardPage() {
             <div className="py-12 text-center text-xs text-slate-400">Loading scheduled posts...</div>
           ) : posts.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center">
-              <Calendar className="mx-auto h-8 w-8 text-slate-300 mb-2" />
+              <img src="/logo.png" alt="DrexPilot Logo" className="mx-auto h-12 w-12 rounded-xl opacity-60 mb-3 shadow-xs" />
               <h3 className="text-sm font-semibold text-slate-800">No posts in this view</h3>
               <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
                 Ask Claude to schedule a post through MCP, or click the Schedule Post button above.

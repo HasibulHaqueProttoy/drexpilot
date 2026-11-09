@@ -93,7 +93,10 @@ export function EditPostModal({
       <div className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-6 shadow-xl animate-in fade-in zoom-in-95 duration-150">
         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
           <div>
-            <h2 className="text-base font-semibold text-slate-900">Edit Scheduled Post</h2>
+            <h2 className="text-base font-semibold text-slate-900 flex items-center gap-2">
+              <img src="/logo.png" alt="DrexPilot Logo" className="h-5 w-5 rounded-md object-cover inline-block" />
+              <span>Edit Scheduled Post</span>
+            </h2>
             <p className="text-xs text-slate-500">Update content or publishing schedule</p>
           </div>
           <button
