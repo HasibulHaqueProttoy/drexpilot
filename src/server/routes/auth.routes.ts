@@ -5,6 +5,7 @@ import { socialAccounts, users } from "../db/schema.js";
 import { eq, and } from "drizzle-orm";
 import { encrypt } from "../security/crypto.js";
 import { hashPassword, verifyPassword, generateToken, verifyToken, type UserPayload } from "../security/jwt.js";
+import { getCandidateLinkedInVersions } from "../publishers/linkedin.publisher.js";
 import { env } from "../config/env.js";
 
 export async function requireAuth(request: FastifyRequest, reply: FastifyReply) {
@@ -339,11 +340,12 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
 
       // 5. Automatically discover managed LinkedIn Company Pages
       let discoveredPagesCount = 0;
+      const activeApiVersion = getCandidateLinkedInVersions()[0];
       try {
         const aclsRes = await fetch("https://api.linkedin.com/rest/organizationalEntityAcls?q=roleAssignee", {
           headers: {
             Authorization: `Bearer ${tokenData.access_token}`,
-            "LinkedIn-Version": "202401",
+            "LinkedIn-Version": activeApiVersion,
             "X-Restli-Protocol-Version": "2.0.0",
           },
         });
@@ -364,7 +366,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
               const orgDetailsRes = await fetch(`https://api.linkedin.com/rest/organizations/${orgId}`, {
                 headers: {
                   Authorization: `Bearer ${tokenData.access_token}`,
-                  "LinkedIn-Version": "202401",
+                  "LinkedIn-Version": activeApiVersion,
                   "X-Restli-Protocol-Version": "2.0.0",
                 },
               });

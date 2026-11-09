@@ -5,6 +5,30 @@ import { db } from "../db/index.js";
 import { eq } from "drizzle-orm";
 import { env } from "../config/env.js";
 
+let cachedActiveLinkedInVersion: string | null = null;
+
+export function getCandidateLinkedInVersions(): string[] {
+  const versions: string[] = [];
+  if (process.env.LINKEDIN_API_VERSION) {
+    versions.push(process.env.LINKEDIN_API_VERSION);
+  }
+  if (cachedActiveLinkedInVersion) {
+    versions.push(cachedActiveLinkedInVersion);
+  }
+
+  const now = new Date();
+  // Safe recent active version: 2-3 months prior
+  const target = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+  const y = target.getFullYear();
+  const m = String(target.getMonth() + 1).padStart(2, "0");
+  versions.push(`${y}${m}`);
+
+  // Known recent active stable releases in 2026 / 2025
+  versions.push("202606", "202603", "202601", "202512", "202510", "202506");
+
+  return Array.from(new Set(versions));
+}
+
 export class LinkedInPublisher implements IPublisher {
   readonly platform = "linkedin";
   private static readonly MAX_CHARACTERS = 3000;
@@ -94,20 +118,40 @@ export class LinkedInPublisher implements IPublisher {
       isReshareDisabledByAuthor: false,
     };
 
-    let response: Response;
-    try {
-      response = await fetch(LinkedInPublisher.POSTS_ENDPOINT, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "LinkedIn-Version": "202401",
-          "X-Restli-Protocol-Version": "2.0.0",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-    } catch (networkErr: any) {
-      throw new Error(`Network error calling LinkedIn API: ${networkErr.message}`);
+    let response: Response | null = null;
+    const versionsToTry = getCandidateLinkedInVersions();
+
+    for (const version of versionsToTry) {
+      try {
+        response = await fetch(LinkedInPublisher.POSTS_ENDPOINT, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "LinkedIn-Version": version,
+            "X-Restli-Protocol-Version": "2.0.0",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+
+        // If version is sunset / inactive (HTTP 426), try next active candidate
+        if (response.status === 426) {
+          console.warn(`[LinkedIn API] Version ${version} returned 426 (inactive). Trying next version...`);
+          continue;
+        }
+
+        // Cache working version
+        if (response.ok) {
+          cachedActiveLinkedInVersion = version;
+        }
+        break;
+      } catch (networkErr: any) {
+        throw new Error(`Network error calling LinkedIn API: ${networkErr.message}`);
+      }
+    }
+
+    if (!response) {
+      throw new Error("Failed to contact LinkedIn API after testing candidate API versions.");
     }
 
     if (!response.ok) {
