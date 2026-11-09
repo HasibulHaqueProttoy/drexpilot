@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "PostPilot (Drex SMM) - AI-Powered Social Media Scheduler",
+  title: "DrexPilot - AI-Powered Social Media Scheduler",
   description: "Lightweight AI-powered social media scheduler connecting to Claude via Model Context Protocol (MCP).",
 };
 
