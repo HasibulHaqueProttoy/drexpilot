@@ -73,6 +73,11 @@ export async function buildApp() {
 
     app.setNotFoundHandler((req, reply) => {
       if (req.raw.url && !req.raw.url.startsWith("/api") && !req.raw.url.startsWith("/mcp")) {
+        const cleanPath = req.raw.url.split("?")[0].replace(/^\//, "");
+        const htmlPath = path.join(publicPath, `${cleanPath}.html`);
+        if (cleanPath && fs.existsSync(htmlPath)) {
+          return reply.type("text/html").send(fs.readFileSync(htmlPath));
+        }
         const indexPath = path.join(publicPath, "index.html");
         if (fs.existsSync(indexPath)) {
           return reply.type("text/html").send(fs.readFileSync(indexPath));

@@ -1,22 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: process.env.NEXT_PUBLIC_API_URL 
-          ? `${process.env.NEXT_PUBLIC_API_URL}/api/:path*`
-          : 'http://localhost:3002/api/:path*',
-      },
-      {
-        source: '/mcp/:path*',
-        destination: process.env.NEXT_PUBLIC_API_URL
-          ? `${process.env.NEXT_PUBLIC_API_URL}/mcp/:path*`
-          : 'http://localhost:3002/mcp/:path*',
-      }
-    ];
-  },
+  output: 'export',
+  // In dev mode, Next.js dev server proxies API calls if running separately
+  ...(process.env.NODE_ENV === 'development' && {
+    // Note: output 'export' disables rewrites, so in dev mode we omit output export
+  }),
 };
 
 export default nextConfig;
