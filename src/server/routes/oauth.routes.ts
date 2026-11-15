@@ -71,43 +71,55 @@ export const oauthRoutes: FastifyPluginAsync = async (fastify) => {
   };
 
   fastify.get("/.well-known/oauth-authorization-server", metadataHandler);
+  fastify.get("/.well-known/oauth-authorization-server/mcp", metadataHandler);
+  fastify.get("/mcp/.well-known/oauth-authorization-server", metadataHandler);
   fastify.get("/.well-known/openid-configuration", metadataHandler);
+  fastify.get("/.well-known/openid-configuration/mcp", metadataHandler);
+  fastify.get("/mcp/.well-known/openid-configuration", metadataHandler);
 
   // 2. RFC 7591 Dynamic Client Registration (used by Claude.ai Connectors)
-  fastify.post("/oauth/register", async (request, reply) => {
+  const registrationHandler = async (request: FastifyRequest, reply: FastifyReply) => {
     const body = (request.body || {}) as {
       client_name?: string;
       redirect_uris?: string[];
       grant_types?: string[];
       response_types?: string[];
+      token_endpoint_auth_method?: string;
     };
 
     const clientId = `claude_${crypto.randomBytes(12).toString("hex")}`;
     const clientSecret = crypto.randomBytes(24).toString("hex");
     const redirectUris = Array.isArray(body.redirect_uris) && body.redirect_uris.length > 0
       ? body.redirect_uris
-      : ["https://claude.ai/api/auth/mcp/callback"];
+      : ["https://claude.ai/api/auth/mcp/callback", "https://claude.ai"];
 
     const client: OAuthClient = {
       clientId,
       clientSecret,
-      clientName: body.client_name || "Claude Custom Connector",
+      clientName: body.client_name || "Claude",
       redirectUris,
     };
 
     registeredClients.set(clientId, client);
     console.log(`[OAuth] Registered dynamic client: ${clientId} (${client.clientName})`);
 
+    reply.header("Content-Type", "application/json; charset=utf-8");
     return reply.code(201).send({
       client_id: clientId,
       client_secret: clientSecret,
+      client_id_issued_at: Math.floor(Date.now() / 1000),
+      client_secret_expires_at: 0,
       client_name: client.clientName,
       redirect_uris: client.redirectUris,
-      grant_types: ["authorization_code"],
+      grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
-      token_endpoint_auth_method: "client_secret_post",
+      token_endpoint_auth_method: body.token_endpoint_auth_method || "client_secret_post",
     });
-  });
+  };
+
+  fastify.post("/oauth/register", registrationHandler);
+  fastify.post("/register", registrationHandler);
+  fastify.post("/mcp/register", registrationHandler);
 
   // 3. GET /oauth/authorize - Claude Authorization screen
   fastify.get("/oauth/authorize", async (request, reply) => {

@@ -93,7 +93,13 @@ export async function buildApp() {
     });
 
     app.setNotFoundHandler((req, reply) => {
-      if (req.raw.url && !req.raw.url.startsWith("/api") && !req.raw.url.startsWith("/mcp")) {
+      if (
+        req.raw.url &&
+        !req.raw.url.startsWith("/api") &&
+        !req.raw.url.startsWith("/mcp") &&
+        !req.raw.url.startsWith("/oauth") &&
+        !req.raw.url.startsWith("/.well-known")
+      ) {
         const cleanPath = req.raw.url.split("?")[0].replace(/^\//, "");
         const htmlPath = path.join(publicPath, `${cleanPath}.html`);
         if (cleanPath && fs.existsSync(htmlPath)) {
