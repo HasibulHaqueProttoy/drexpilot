@@ -59,11 +59,6 @@ export async function buildApp() {
     reply.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   });
 
-  // Robots.txt to prevent search engine indexing of private API routes
-  app.get("/robots.txt", async (request, reply) => {
-    reply.type("text/plain").send("User-agent: *\nDisallow: /api/\nDisallow: /mcp/\nDisallow: /login\nDisallow: /connections\nAllow: /\n");
-  });
-
   // Health check endpoint
   app.get("/health", async () => ({
     status: "ok",
