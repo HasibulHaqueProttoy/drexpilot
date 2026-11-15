@@ -43,28 +43,29 @@ function getEffectiveRedirectUri(request: FastifyRequest): string {
   if (process.env.LINKEDIN_REDIRECT_URI && !process.env.LINKEDIN_REDIRECT_URI.includes("localhost")) {
     return process.env.LINKEDIN_REDIRECT_URI;
   }
-  // 2. Render cloud automatic URL
-  if (process.env.RENDER_EXTERNAL_URL) {
-    return `${process.env.RENDER_EXTERNAL_URL.replace(/\/+$/, "")}/api/auth/linkedin/callback`;
-  }
-  // 3. Auto-detect from incoming request host
+  // 2. Auto-detect from incoming request host (supports custom domain e.g. smmpilot.drex.agency)
   const host = (request.headers["x-forwarded-host"] || request.headers.host)?.toString();
-  const proto = (request.headers["x-forwarded-proto"] || "http").toString();
+  const proto = (request.headers["x-forwarded-proto"] || "https").toString();
   if (host && !host.includes("localhost") && !host.includes("127.0.0.1")) {
     return `${proto}://${host}/api/auth/linkedin/callback`;
+  }
+  // 3. Render cloud automatic URL
+  if (process.env.RENDER_EXTERNAL_URL) {
+    return `${process.env.RENDER_EXTERNAL_URL.replace(/\/+$/, "")}/api/auth/linkedin/callback`;
   }
   // 4. Default to configured env
   return env.LINKEDIN_REDIRECT_URI;
 }
 
 function getEffectiveFrontendUrl(request: FastifyRequest): string {
-  if (process.env.RENDER_EXTERNAL_URL) {
-    return process.env.RENDER_EXTERNAL_URL.replace(/\/+$/, "");
-  }
+  // 1. Auto-detect from incoming request host (supports custom domain e.g. smmpilot.drex.agency)
   const host = (request.headers["x-forwarded-host"] || request.headers.host)?.toString();
-  const proto = (request.headers["x-forwarded-proto"] || "http").toString();
+  const proto = (request.headers["x-forwarded-proto"] || "https").toString();
   if (host && !host.includes("localhost") && !host.includes("127.0.0.1")) {
     return `${proto}://${host}`;
+  }
+  if (process.env.RENDER_EXTERNAL_URL) {
+    return process.env.RENDER_EXTERNAL_URL.replace(/\/+$/, "");
   }
   return env.FRONTEND_URL.replace(/\/+$/, "");
 }

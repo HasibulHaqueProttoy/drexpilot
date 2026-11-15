@@ -42,14 +42,23 @@ registeredClients.set(STATIC_CLIENT_ID, {
 });
 
 function getBaseUrl(request: FastifyRequest): string {
-  if (process.env.RENDER_EXTERNAL_URL) {
-    return process.env.RENDER_EXTERNAL_URL.replace(/\/+$/, "");
-  }
+  // 1. Always prioritize the incoming request host (supports custom domain e.g. smmpilot.drex.agency)
   const host = (request.headers["x-forwarded-host"] || request.headers.host)?.toString();
-  const proto = (request.headers["x-forwarded-proto"] || "http").toString();
+  const proto = (request.headers["x-forwarded-proto"] || "https").toString();
   if (host && !host.includes("localhost") && !host.includes("127.0.0.1")) {
     return `${proto}://${host}`;
   }
+
+  // 2. Custom domain configured in FRONTEND_URL
+  if (env.FRONTEND_URL && !env.FRONTEND_URL.includes("localhost") && !env.FRONTEND_URL.includes("127.0.0.1")) {
+    return env.FRONTEND_URL.replace(/\/+$/, "");
+  }
+
+  // 3. Fallback to Render external URL
+  if (process.env.RENDER_EXTERNAL_URL) {
+    return process.env.RENDER_EXTERNAL_URL.replace(/\/+$/, "");
+  }
+
   return `http://${env.HOST}:${env.PORT}`;
 }
 
