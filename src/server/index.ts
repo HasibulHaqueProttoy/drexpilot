@@ -50,10 +50,24 @@ export async function buildApp() {
     timeWindow: "1 minute",
   });
 
+  // Security Headers (Google Safe Browsing & Web Risk compliance)
+  app.addHook("onSend", async (request, reply) => {
+    reply.header("X-Content-Type-Options", "nosniff");
+    reply.header("X-Frame-Options", "DENY");
+    reply.header("X-XSS-Protection", "1; mode=block");
+    reply.header("Referrer-Policy", "strict-origin-when-cross-origin");
+    reply.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  });
+
+  // Robots.txt to prevent search engine indexing of private API routes
+  app.get("/robots.txt", async (request, reply) => {
+    reply.type("text/plain").send("User-agent: *\nDisallow: /api/\nDisallow: /mcp/\nDisallow: /login\nDisallow: /connections\nAllow: /\n");
+  });
+
   // Health check endpoint
   app.get("/health", async () => ({
     status: "ok",
-    service: "postpilot-smm",
+    service: "drexpilot",
     time: new Date().toISOString(),
   }));
 

@@ -21,11 +21,17 @@ export async function requireAuth(request: FastifyRequest, reply: FastifyReply) 
   const token = cookieToken || bearerToken;
 
   if (!token) {
+    if (request.headers.accept?.includes("text/html")) {
+      return reply.redirect("/login");
+    }
     return reply.status(401).send({ error: "Authentication required" });
   }
 
   const payload = verifyToken(token);
   if (!payload) {
+    if (request.headers.accept?.includes("text/html")) {
+      return reply.redirect("/login");
+    }
     return reply.status(401).send({ error: "Invalid or expired session" });
   }
 
@@ -195,8 +201,8 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     return { user: payload };
   });
 
-  // GET /api/auth/linkedin - Initiate OAuth flow
-  fastify.get("/linkedin", async (request, reply) => {
+  // GET /api/auth/linkedin - Initiate OAuth flow (Protected: requires authenticated session)
+  fastify.get("/linkedin", { preHandler: [requireAuth] }, async (request, reply) => {
     const query = request.query as { with_pages?: string };
     const state = crypto.randomBytes(24).toString("hex");
     const redirectUri = getEffectiveRedirectUri(request);

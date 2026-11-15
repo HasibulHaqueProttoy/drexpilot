@@ -193,10 +193,13 @@ export default function LoginPage() {
           </form>
         </div>
 
-        {/* Security badge */}
-        <div className="text-center mt-6">
-          <p className="text-[11px] text-slate-400">
-            Protected with bcrypt password hashing and secure httpOnly JWT sessions.
+        {/* Security badge and legal transparency */}
+        <div className="text-center mt-6 space-y-2">
+          <p className="text-[11px] text-slate-500 font-medium">
+            DrexPilot &copy; 2026 &bull; Private Social Media Management &amp; Scheduling
+          </p>
+          <p className="text-[10px] text-slate-400">
+            For authorized team use only. Session secured with bcrypt password hashing and AES-256 encrypted tokens.
           </p>
         </div>
       </div>
