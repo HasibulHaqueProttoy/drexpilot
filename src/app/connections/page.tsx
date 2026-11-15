@@ -197,7 +197,7 @@ function ConnectionsContent() {
           </div>
         ) : (
           <p className="text-xs text-slate-500 leading-relaxed">
-            Connect your LinkedIn account to allow Claude and DrexPilot to schedule and publish posts to both your personal profile and any LinkedIn company pages you manage.
+            Connect your LinkedIn account to allow Claude and SMMPilot to schedule and publish posts to both your personal profile and any LinkedIn company pages you manage.
           </p>
         )}
 

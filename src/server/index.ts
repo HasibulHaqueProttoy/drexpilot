@@ -63,7 +63,7 @@ export async function buildApp() {
   // Health check endpoint
   app.get("/health", async () => ({
     status: "ok",
-    service: "drexpilot",
+    service: "smmpilot",
     time: new Date().toISOString(),
   }));
 
@@ -105,7 +105,7 @@ export async function buildApp() {
 
 async function startServer() {
   console.log("==========================================");
-  console.log("Starting PostPilot (Drex SMM) Server...");
+  console.log("Starting SMMPilot Server...");
   console.log("==========================================");
 
   try {

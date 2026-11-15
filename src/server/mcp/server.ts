@@ -7,11 +7,12 @@ import { PublisherFactory } from "../publishers/publisher.factory.js";
 import { schedulePostJob, reschedulePostJob, cancelPostJob } from "../queue/scheduler.js";
 import { executePublish } from "../queue/worker.js";
 import { getDefaultTimezone } from "../services/settings.service.js";
+import { getUpcomingOptimalTimes } from "../services/optimal_time.service.js";
 import { env } from "../config/env.js";
 
 export function createMcpServer(): McpServer {
   const server = new McpServer({
-    name: "PostPilot",
+    name: "SMMPilot",
     version: "1.0.0",
   });
 
@@ -73,15 +74,56 @@ export function createMcpServer(): McpServer {
     }
   );
 
-  // Tool 2: schedule_post
+  // Tool 2: get_optimal_posting_times
+  server.tool(
+    "get_optimal_posting_times",
+    {
+      timezone: z
+        .string()
+        .optional()
+        .describe("IANA timezone, e.g. 'Asia/Dhaka', 'America/New_York'. Defaults to the configured system timezone."),
+      count: z
+        .number()
+        .optional()
+        .default(5)
+        .describe("Number of upcoming high-engagement time slots to return (default: 5)."),
+    },
+    async ({ timezone, count }) => {
+      const resolvedTz = timezone || (await getDefaultTimezone());
+      const slots = getUpcomingOptimalTimes(resolvedTz, count || 5);
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                platform: "linkedin",
+                timezone: resolvedTz,
+                slots,
+                recommendation:
+                  "Tuesday, Wednesday, and Thursday mornings (8:30 AM - 10:00 AM local time) yield the highest overall professional reach and engagement on LinkedIn.",
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    }
+  );
+
+  // Tool 3: schedule_post
   server.tool(
     "schedule_post",
     {
-      platform: z.string().describe("Target social media platform. MVP currently supports 'linkedin'."),
-      content: z.string().describe("The text content of the post to publish."),
+      platform: z.string().describe("Target social media platform. SMMPilot currently supports 'linkedin'."),
+      content: z.string().describe("The text content of the post to publish (including emojis, captions, and hashtags)."),
       scheduled_at: z
         .string()
-        .describe("ISO 8601 formatted datetime string for when the post should be published (e.g. 2026-11-09T14:30:00Z)."),
+        .optional()
+        .describe(
+          "ISO 8601 formatted datetime string for when the post should be published (e.g. 2026-11-17T03:00:00Z). If omitted or set to 'optimal', SMMPilot automatically selects the next peak engagement time slot in the user's timezone."
+        ),
       timezone: z
         .string()
         .optional()
@@ -118,7 +160,7 @@ export function createMcpServer(): McpServer {
           content: [
             {
               type: "text",
-              text: `Unsupported platform '${platform}'. Drex SMM PostPilot MVP currently supports 'linkedin'.`,
+              text: `Unsupported platform '${platform}'. SMMPilot currently supports 'linkedin'.`,
             },
           ],
         };
@@ -154,31 +196,44 @@ export function createMcpServer(): McpServer {
         };
       }
 
-      // 4. Validate scheduled date
-      const scheduledDate = new Date(scheduled_at);
-      if (isNaN(scheduledDate.getTime())) {
-        return {
-          isError: true,
-          content: [
-            {
-              type: "text",
-              text: `Invalid date format for 'scheduled_at': '${scheduled_at}'. Please supply a valid ISO 8601 timestamp.`,
-            },
-          ],
-        };
-      }
+      // 4. Validate or compute scheduled date
+      let scheduledDate: Date;
+      let slotInfo: any = null;
 
-      const now = new Date();
-      if (scheduledDate.getTime() <= now.getTime()) {
-        return {
-          isError: true,
-          content: [
-            {
-              type: "text",
-              text: `Scheduled time must be in the future. Given: ${scheduledDate.toISOString()}, Current UTC: ${now.toISOString()}.`,
-            },
-          ],
-        };
+      if (!scheduled_at || scheduled_at.toLowerCase() === "optimal") {
+        const optimalSlots = getUpcomingOptimalTimes(resolvedTz, 1);
+        if (optimalSlots.length === 0) {
+          scheduledDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        } else {
+          scheduledDate = new Date(optimalSlots[0].iso);
+          slotInfo = optimalSlots[0];
+        }
+      } else {
+        scheduledDate = new Date(scheduled_at);
+        if (isNaN(scheduledDate.getTime())) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text",
+                text: `Invalid date format for 'scheduled_at': '${scheduled_at}'. Please supply a valid ISO 8601 timestamp or 'optimal'.`,
+              },
+            ],
+          };
+        }
+
+        const now = new Date();
+        if (scheduledDate.getTime() <= now.getTime()) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text",
+                text: `Scheduled time must be in the future. Given: ${scheduledDate.toISOString()}, Current UTC: ${now.toISOString()}.`,
+              },
+            ],
+          };
+        }
       }
 
       // 5. Confirm LinkedIn is connected and resolve target profile/page
@@ -258,10 +313,17 @@ export function createMcpServer(): McpServer {
                 platform: post.platform,
                 status: post.status,
                 scheduled_at_utc: post.scheduledAt.toISOString(),
+                local_time: slotInfo ? slotInfo.localFormatted : undefined,
+                optimal_engagement_window: slotInfo ? slotInfo.reason : undefined,
                 timezone: post.timezone,
                 content_preview: post.content.length > 80 ? post.content.substring(0, 80) + "..." : post.content,
                 account_name: account.accountName,
                 account_type: account.accountType,
+                media_type: post.mediaType,
+                media_count: post.mediaUrls?.length || 0,
+                message: slotInfo
+                  ? `Post successfully scheduled for the next optimal LinkedIn window: ${slotInfo.localFormatted} (${slotInfo.reason}).`
+                  : `Post successfully scheduled for ${scheduledDate.toISOString()} on LinkedIn (${account.accountName}).`,
               },
               null,
               2

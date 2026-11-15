@@ -51,13 +51,16 @@ export default function SettingsPage() {
 
   const mcpServerConfig = {
     mcpServers: {
-      postpilot: {
-        command: "npx",
+      smmpilot: {
+        command: "/opt/homebrew/bin/node",
         args: [
-          "-y",
-          "mcp-remote",
-          "http://localhost:3002/mcp/sse?apiKey=postpilot-mcp-secret-key-12345"
+          "/Users/hasibulprottoy/Downloads/SMM/dist/server/mcp/stdio.js"
         ],
+        cwd: "/Users/hasibulprottoy/Downloads/SMM",
+        env: {
+          DATABASE_URL: "postgres://hasibulprottoy@localhost:5433/postpilot",
+          DEFAULT_TIMEZONE: timezone || "Asia/Dhaka"
+        }
       },
     },
   };
@@ -151,7 +154,7 @@ export default function SettingsPage() {
               <div>
                 <h3 className="text-base font-semibold text-slate-900">Claude Model Context Protocol (MCP)</h3>
                 <p className="text-xs text-slate-500">
-                  Connect PostPilot to Claude via Streamable HTTP (SSE)
+                  Connect SMMPilot to Claude Desktop or Claude web via MCP
                 </p>
               </div>
             </div>
@@ -169,13 +172,13 @@ export default function SettingsPage() {
               <div className="rounded-lg bg-slate-50 p-3 border border-slate-100">
                 <span className="font-semibold text-slate-700 block mb-1">Streamable HTTP SSE Endpoint:</span>
                 <code className="text-slate-800 font-mono text-[11px] select-all break-all">
-                  http://localhost:3002/mcp/sse
+                  /mcp/sse
                 </code>
               </div>
               <div className="rounded-lg bg-slate-50 p-3 border border-slate-100">
                 <span className="font-semibold text-slate-700 block mb-1">MCP API Key:</span>
                 <code className="text-slate-800 font-mono text-[11px] select-all break-all">
-                  postpilot-mcp-secret-key-12345
+                  smmpilot-mcp-secret-key-12345
                 </code>
               </div>
             </div>

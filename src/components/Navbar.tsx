@@ -69,11 +69,11 @@ export function Navbar({ onRefresh }: { onRefresh?: () => void }) {
           <Link href="/" className="flex items-center space-x-2.5 group">
             <img
               src="/logo.png"
-              alt="DrexPilot Logo"
+              alt="SMMPilot Logo"
               className="h-9 w-9 rounded-lg shadow-sm object-cover transition-transform group-hover:scale-105"
             />
             <div>
-              <span className="font-bold text-slate-900 text-lg leading-tight block">DrexPilot</span>
+              <span className="font-bold text-slate-900 text-lg leading-tight block">SMMPilot</span>
             </div>
           </Link>
 
@@ -143,7 +143,7 @@ export function Navbar({ onRefresh }: { onRefresh?: () => void }) {
               </div>
               <button
                 onClick={handleLogout}
-                title="Sign out of DrexPilot"
+                title="Sign out of SMMPilot"
                 className="flex items-center space-x-1 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-md border border-slate-200 transition-colors"
               >
                 <LogOut className="h-3.5 w-3.5" />

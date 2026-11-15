@@ -55,10 +55,10 @@ export default function LoginPage() {
         <div className="text-center mb-8">
           <img
             src="/logo.png"
-            alt="DrexPilot Logo"
+            alt="SMMPilot Logo"
             className="h-16 w-16 rounded-2xl shadow-md mx-auto mb-3 object-cover"
           />
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">DrexPilot</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">SMMPilot</h1>
           <p className="text-xs text-slate-500 mt-1">
             Sign in to manage scheduled publishing &amp; social connections
           </p>
@@ -83,7 +83,7 @@ export default function LoginPage() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@drexpilot.com"
+                  placeholder="admin@smmpilot.com"
                   className="w-full rounded-md border border-slate-300 pl-9 pr-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 />
               </div>
@@ -113,7 +113,7 @@ export default function LoginPage() {
                 <span>Signing in...</span>
               ) : (
                 <>
-                  <span>Sign In to DrexPilot</span>
+                  <span>Sign In to SMMPilot</span>
                   <ArrowRight className="h-4 w-4" />
                 </>
               )}
@@ -124,7 +124,7 @@ export default function LoginPage() {
         {/* Security badge and legal transparency */}
         <div className="text-center mt-6 space-y-2">
           <p className="text-[11px] text-slate-500 font-medium">
-            DrexPilot &copy; 2026 &bull; Private Social Media Management &amp; Scheduling
+            SMMPilot &copy; 2026 &bull; Private Social Media Management &amp; Scheduling
           </p>
           <p className="text-[10px] text-slate-400">
             For authorized personal use only. Public registration is disabled.
