@@ -4,6 +4,7 @@ dns.setDefaultResultOrder("ipv4first");
 import fastify from "fastify";
 import cors from "@fastify/cors";
 import cookie from "@fastify/cookie";
+import formbody from "@fastify/formbody";
 import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
 import path from "node:path";
@@ -22,6 +23,7 @@ import { authRoutes } from "./routes/auth.routes.js";
 import { postsRoutes } from "./routes/posts.routes.js";
 import { settingsRoutes } from "./routes/settings.routes.js";
 import { mcpRoutes } from "./routes/mcp.routes.js";
+import { oauthRoutes } from "./routes/oauth.routes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -44,6 +46,9 @@ export async function buildApp() {
     secret: env.COOKIE_SECRET,
     hook: "onRequest",
   });
+
+  // Support form-urlencoded requests (OAuth / token endpoints)
+  await app.register(formbody);
 
   // Security: Rate limiting
   await app.register(rateLimit, {
@@ -74,6 +79,9 @@ export async function buildApp() {
 
   // MCP Remote Server Route
   await app.register(mcpRoutes, { prefix: "/mcp" });
+
+  // OAuth 2.0 & Claude Remote Connector Routes
+  await app.register(oauthRoutes);
 
   // Production static file serving if Next.js export exists
   const publicPath = path.join(process.cwd(), "out");
