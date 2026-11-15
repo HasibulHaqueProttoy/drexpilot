@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 
 import { env } from "./config/env.js";
 import { runMigrations } from "./db/migrate.js";
+import { seedAdminUser } from "./security/seed.js";
 import { queryClient } from "./db/index.js";
 import { startBoss, stopBoss } from "./queue/boss.js";
 import { registerPublishWorker } from "./queue/worker.js";
@@ -108,8 +109,9 @@ async function startServer() {
   console.log("==========================================");
 
   try {
-    // 1. Run migrations
+    // 1. Run migrations and ensure admin credentials exist
     await runMigrations();
+    await seedAdminUser();
 
     // 2. Start pg-boss queue
     await startBoss();

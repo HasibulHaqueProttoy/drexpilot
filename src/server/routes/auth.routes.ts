@@ -70,64 +70,16 @@ function getEffectiveFrontendUrl(request: FastifyRequest): string {
 }
 
 export const authRoutes: FastifyPluginAsync = async (fastify) => {
-  // GET /api/auth/setup-status - Check if any admin account exists
+  // GET /api/auth/setup-status - Check setup status
   fastify.get("/setup-status", async () => {
-    const existing = await db.query.users.findFirst();
-    return { hasUsers: !!existing };
+    return { hasUsers: true };
   });
 
-  // POST /api/auth/register - Register admin/user account
+  // POST /api/auth/register - Disabled for private personal deployment
   fastify.post("/register", async (request, reply) => {
-    const body = request.body as { email?: string; password?: string; name?: string };
-    const email = body?.email?.trim().toLowerCase();
-    const password = body?.password;
-    const name = body?.name?.trim() || "Admin";
-
-    if (!email || !email.includes("@")) {
-      return reply.status(400).send({ error: "A valid email address is required" });
-    }
-    if (!password || password.length < 6) {
-      return reply.status(400).send({ error: "Password must be at least 6 characters long" });
-    }
-
-    const existing = await db.query.users.findFirst({
-      where: eq(users.email, email),
+    return reply.status(403).send({
+      error: "Account registration is disabled. This is a private personal application.",
     });
-    if (existing) {
-      return reply.status(400).send({ error: "An account with this email already exists" });
-    }
-
-    const passwordHash = await hashPassword(password);
-    const [newUser] = await db
-      .insert(users)
-      .values({
-        email,
-        passwordHash,
-        name,
-      })
-      .returning();
-
-    const userPayload: UserPayload = {
-      id: newUser.id,
-      email: newUser.email,
-      name: newUser.name,
-    };
-
-    const token = generateToken(userPayload);
-
-    reply.setCookie("auth_token", token, {
-      path: "/",
-      httpOnly: true,
-      secure: env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60, // 7 days
-    });
-
-    return {
-      success: true,
-      user: userPayload,
-      token,
-    };
   });
 
   // POST /api/auth/login - Sign in with email and password

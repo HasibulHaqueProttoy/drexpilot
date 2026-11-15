@@ -17,6 +17,9 @@ const envSchema = z.object({
   DEFAULT_TIMEZONE: z.string().default("Asia/Dhaka"),
   MCP_API_KEY: z.string().default("postpilot-mcp-secret-key-12345"),
   FRONTEND_URL: z.string().default("http://localhost:3000"),
+  ADMIN_EMAIL: z.string().email().default("admin@drexpilot.com"),
+  ADMIN_PASSWORD: z.string().min(6).default("drexpilot123"),
+  ADMIN_NAME: z.string().default("Admin"),
 });
 
 export const env = envSchema.parse(process.env);
