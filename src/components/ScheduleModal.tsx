@@ -1,22 +1,25 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, AlertCircle, PlusCircle, Building2, User } from "lucide-react";
+import { X, AlertCircle, PlusCircle, Building2, User, Send, Calendar, Clock } from "lucide-react";
 
 export function ScheduleModal({
   isOpen,
   onClose,
   onCreated,
+  initialMode = "schedule",
   defaultTimezone = "Asia/Dhaka",
 }: {
   isOpen: boolean;
   onClose: () => void;
   onCreated: () => void;
+  initialMode?: "schedule" | "now";
   defaultTimezone?: string;
 }) {
   const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
   const initialDate = tomorrow.toISOString().split("T")[0];
 
+  const [mode, setMode] = useState<"schedule" | "now">(initialMode);
   const [content, setContent] = useState("");
   const [date, setDate] = useState(initialDate);
   const [time, setTime] = useState("10:00");
@@ -27,10 +30,12 @@ export function ScheduleModal({
   const [mediaUrls, setMediaUrls] = useState<string>("");
   const [mediaTitle, setMediaTitle] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [actionType, setActionType] = useState<"schedule" | "now" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
+      setMode(initialMode);
       fetch("/api/auth/status")
         .then((res) => res.json())
         .then((data) => {
@@ -45,12 +50,11 @@ export function ScheduleModal({
         })
         .catch(() => {});
     }
-  }, [isOpen]);
+  }, [isOpen, initialMode]);
 
   if (!isOpen) return null;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handlePostAction = async (publishNow: boolean) => {
     setError(null);
 
     if (!content.trim()) {
@@ -58,19 +62,25 @@ export function ScheduleModal({
       return;
     }
 
-    const dateTimeStr = `${date}T${time}:00`;
-    const targetDate = new Date(dateTimeStr);
-    if (isNaN(targetDate.getTime())) {
-      setError("Invalid date/time");
-      return;
-    }
+    let targetDateIso = new Date().toISOString();
 
-    if (targetDate.getTime() <= Date.now()) {
-      setError("Scheduled time must be in the future");
-      return;
+    if (!publishNow) {
+      const dateTimeStr = `${date}T${time}:00`;
+      const targetDate = new Date(dateTimeStr);
+      if (isNaN(targetDate.getTime())) {
+        setError("Invalid date/time");
+        return;
+      }
+
+      if (targetDate.getTime() <= Date.now()) {
+        setError("Scheduled time must be in the future");
+        return;
+      }
+      targetDateIso = targetDate.toISOString();
     }
 
     setLoading(true);
+    setActionType(publishNow ? "now" : "schedule");
 
     try {
       const res = await fetch("/api/posts", {
@@ -79,8 +89,9 @@ export function ScheduleModal({
         body: JSON.stringify({
           platform: "linkedin",
           content,
-          scheduled_at: targetDate.toISOString(),
+          scheduled_at: targetDateIso,
           timezone,
+          publish_now: publishNow,
           social_account_id: selectedAccountId || undefined,
           media_type: mediaType,
           media_urls: mediaUrls ? mediaUrls.split(",").map((s) => s.trim()).filter(Boolean) : [],
@@ -90,17 +101,25 @@ export function ScheduleModal({
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "Failed to schedule post");
+        throw new Error(data.error || (publishNow ? "Failed to publish post" : "Failed to schedule post"));
       }
 
       setContent("");
+      setMediaUrls("");
+      setMediaTitle("");
       onCreated();
       onClose();
     } catch (err: any) {
-      setError(err.message || "Failed to schedule post");
+      setError(err.message || "Failed to process post request");
     } finally {
       setLoading(false);
+      setActionType(null);
     }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    handlePostAction(mode === "now");
   };
 
   return (
@@ -110,15 +129,47 @@ export function ScheduleModal({
           <div>
             <h2 className="text-base font-semibold text-slate-900 flex items-center gap-2">
               <img src="/logo.png" alt="DrexPilot Logo" className="h-5 w-5 rounded-md object-cover inline-block" />
-              <span>Schedule LinkedIn Post</span>
+              <span>{mode === "now" ? "Publish to LinkedIn" : "Schedule LinkedIn Post"}</span>
             </h2>
-            <p className="text-xs text-slate-500">DrexPilot will automatically publish at this time</p>
+            <p className="text-xs text-slate-500">
+              {mode === "now"
+                ? "Deliver immediately to your connected profile"
+                : "DrexPilot will automatically publish at this time"}
+            </p>
           </div>
           <button
             onClick={onClose}
             className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
           >
             <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Mode Switcher */}
+        <div className="mt-4 flex rounded-lg bg-slate-100 p-1">
+          <button
+            type="button"
+            onClick={() => setMode("now")}
+            className={`flex-1 flex items-center justify-center space-x-1.5 py-1.5 text-xs font-semibold rounded-md transition-all ${
+              mode === "now"
+                ? "bg-white text-emerald-700 shadow-sm"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <Send className="h-3.5 w-3.5" />
+            <span>Post Now</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("schedule")}
+            className={`flex-1 flex items-center justify-center space-x-1.5 py-1.5 text-xs font-semibold rounded-md transition-all ${
+              mode === "schedule"
+                ? "bg-white text-blue-700 shadow-sm"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <Calendar className="h-3.5 w-3.5" />
+            <span>Schedule for Later</span>
           </button>
         </div>
 
@@ -167,63 +218,82 @@ export function ScheduleModal({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Date</label>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                required
-              />
+          {/* Mode-specific timing section */}
+          {mode === "now" ? (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-800 flex items-center space-x-2.5">
+              <Send className="h-4 w-4 text-emerald-600 shrink-0" />
+              <span>This post will be published immediately to LinkedIn upon submission.</span>
             </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Date</label>
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  required={mode === "schedule"}
+                />
+              </div>
 
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Time</label>
-              <input
-                type="time"
-                value={time}
-                onChange={(e) => setTime(e.target.value)}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                required
-              />
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Time</label>
+                <input
+                  type="time"
+                  value={time}
+                  onChange={(e) => setTime(e.target.value)}
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  required={mode === "schedule"}
+                />
+              </div>
+
+              <div className="col-span-2">
+                <label className="block text-xs font-medium text-slate-700 mb-1">Timezone</label>
+                <select
+                  value={timezone}
+                  onChange={(e) => setTimezone(e.target.value)}
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                >
+                  <option value="Asia/Dhaka">Asia/Dhaka (GMT+6)</option>
+                  <option value="UTC">UTC (GMT+0)</option>
+                  <option value="America/New_York">America/New_York (EST/EDT)</option>
+                  <option value="America/Los_Angeles">America/Los_Angeles (PST/PDT)</option>
+                  <option value="Europe/London">Europe/London (GMT/BST)</option>
+                  <option value="Asia/Dubai">Asia/Dubai (GST)</option>
+                  <option value="Asia/Singapore">Asia/Singapore (SGT)</option>
+                  <option value="Asia/Tokyo">Asia/Tokyo (JST)</option>
+                </select>
+              </div>
             </div>
-          </div>
+          )}
 
-          <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">Timezone</label>
-            <select
-              value={timezone}
-              onChange={(e) => setTimezone(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              <option value="Asia/Dhaka">Asia/Dhaka (GMT+6)</option>
-              <option value="UTC">UTC (GMT+0)</option>
-              <option value="America/New_York">America/New_York (EST/EDT)</option>
-              <option value="America/Los_Angeles">America/Los_Angeles (PST/PDT)</option>
-              <option value="Europe/London">Europe/London (GMT/BST)</option>
-              <option value="Asia/Singapore">Asia/Singapore (GMT+8)</option>
-              <option value="Asia/Dubai">Asia/Dubai (GMT+4)</option>
-            </select>
-          </div>
-
-          {/* Optional Rich Media */}
-          <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 space-y-3">
+          {/* Media Attachments Section */}
+          <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 space-y-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Media Attachment (Optional)
-              </label>
-              <select
-                value={mediaType}
-                onChange={(e) => setMediaType(e.target.value as any)}
-                className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
-              >
-                <option value="none">None (Text-only post)</option>
-                <option value="image">🖼️ Image(s) (Single or Multi-Photo)</option>
-                <option value="carousel">📑 Carousel Slide Deck (PDF Document)</option>
-                <option value="video">🎬 Video (MP4)</option>
-              </select>
+              <label className="block text-xs font-medium text-slate-700 mb-1">Media Attachment</label>
+              <div className="grid grid-cols-4 gap-2">
+                {(["none", "image", "video", "carousel"] as const).map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => {
+                      setMediaType(type);
+                      if (type === "none") {
+                        setMediaUrls("");
+                        setMediaTitle("");
+                      }
+                    }}
+                    className={`py-1.5 px-2 text-xs font-medium rounded-md capitalize border transition-colors ${
+                      mediaType === type
+                        ? "bg-blue-50 border-blue-500 text-blue-700 font-semibold"
+                        : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    {type === "carousel" ? "PDF Carousel" : type}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {mediaType !== "none" && (
@@ -231,10 +301,10 @@ export function ScheduleModal({
                 <div>
                   <label className="block text-xs font-medium text-slate-700 mb-1">
                     {mediaType === "carousel"
-                      ? "PDF Document URL"
+                      ? "Public PDF Document URL"
                       : mediaType === "video"
-                      ? "MP4 Video URL"
-                      : "Image URL(s) (comma-separated for multiple)"}
+                      ? "Public MP4 Video URL"
+                      : "Public Image URL(s) (comma-separated for multi-image)"}
                   </label>
                   <input
                     type="url"
@@ -274,22 +344,49 @@ export function ScheduleModal({
             )}
           </div>
 
-          <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
+          {/* Action buttons */}
+          <div className="flex items-center justify-between pt-2 border-t border-slate-100">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-md border border-slate-300 px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              disabled={loading}
+              className="rounded-md border border-slate-300 px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
             >
               Cancel
             </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="inline-flex items-center justify-center space-x-1.5 rounded-md bg-blue-600 px-4 py-2 text-xs font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none disabled:opacity-50"
-            >
-              <PlusCircle className="h-3.5 w-3.5" />
-              <span>{loading ? "Scheduling..." : "Schedule Post"}</span>
-            </button>
+
+            <div className="flex items-center space-x-2">
+              {mode === "schedule" ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={() => handlePostAction(true)}
+                    className="inline-flex items-center justify-center space-x-1.5 rounded-md border border-emerald-600 bg-emerald-50 px-3.5 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 focus:outline-none disabled:opacity-50 transition-colors"
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                    <span>{loading && actionType === "now" ? "Publishing..." : "Post Now"}</span>
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="inline-flex items-center justify-center space-x-1.5 rounded-md bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none disabled:opacity-50 transition-colors"
+                  >
+                    <PlusCircle className="h-3.5 w-3.5" />
+                    <span>{loading && actionType === "schedule" ? "Scheduling..." : "Schedule Post"}</span>
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="inline-flex items-center justify-center space-x-1.5 rounded-md bg-emerald-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 focus:outline-none disabled:opacity-50 transition-colors"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  <span>{loading ? "Publishing Now..." : "Publish Now to LinkedIn"}</span>
+                </button>
+              )}
+            </div>
           </div>
         </form>
       </div>

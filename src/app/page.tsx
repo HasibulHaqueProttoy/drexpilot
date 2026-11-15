@@ -7,7 +7,7 @@ import { PostCard, type PostItem } from "@/components/PostCard";
 import { EditPostModal } from "@/components/EditPostModal";
 import { ScheduleModal } from "@/components/ScheduleModal";
 import { AuthGuard } from "@/components/AuthGuard";
-import { Plus, Calendar, Filter, AlertCircle, RefreshCw } from "lucide-react";
+import { Plus, Calendar, Filter, AlertCircle, RefreshCw, Send } from "lucide-react";
 import Link from "next/link";
 
 export default function DashboardPage() {
@@ -23,6 +23,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [editingPost, setEditingPost] = useState<PostItem | null>(null);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<"schedule" | "now">("schedule");
   const [authStatus, setAuthStatus] = useState<any>(null);
 
   const fetchDashboardData = useCallback(async () => {
@@ -125,10 +126,23 @@ export default function DashboardPage() {
 
           <div className="flex items-center space-x-2">
             <button
-              onClick={() => setIsScheduleOpen(true)}
-              className="inline-flex items-center space-x-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 transition-colors"
+              onClick={() => {
+                setModalMode("now");
+                setIsScheduleOpen(true);
+              }}
+              className="inline-flex items-center space-x-1.5 rounded-lg bg-emerald-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 transition-colors"
             >
-              <Plus className="h-4 w-4" />
+              <Send className="h-3.5 w-3.5" />
+              <span>Post Now</span>
+            </button>
+            <button
+              onClick={() => {
+                setModalMode("schedule");
+                setIsScheduleOpen(true);
+              }}
+              className="inline-flex items-center space-x-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 transition-colors"
+            >
+              <Calendar className="h-3.5 w-3.5" />
               <span>Schedule Post</span>
             </button>
           </div>
@@ -200,9 +214,10 @@ export default function DashboardPage() {
         />
       )}
 
-      {/* Schedule Modal */}
+      {/* Schedule / Post Now Modal */}
       <ScheduleModal
         isOpen={isScheduleOpen}
+        initialMode={modalMode}
         onClose={() => setIsScheduleOpen(false)}
         onCreated={fetchDashboardData}
       />

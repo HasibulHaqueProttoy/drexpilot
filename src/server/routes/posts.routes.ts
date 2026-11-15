@@ -13,11 +13,12 @@ const createPostSchema = z.object({
   platform: z.string().default("linkedin"),
   social_account_id: z.string().optional(),
   content: z.string().min(1),
-  scheduled_at: z.string(),
+  scheduled_at: z.string().optional(),
   timezone: z.string().optional(),
   media_type: z.enum(["none", "image", "video", "carousel"]).default("none"),
   media_urls: z.array(z.string()).optional(),
   media_title: z.string().optional(),
+  publish_now: z.boolean().optional(),
 });
 
 const updatePostSchema = z.object({
@@ -118,15 +119,23 @@ export const postsRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const resolvedTz = timezone || (await getDefaultTimezone());
-    const scheduledDate = new Date(scheduled_at);
-    if (isNaN(scheduledDate.getTime())) {
-      reply.code(400).send({ error: "Invalid scheduled_at date" });
-      return;
-    }
+    const isPublishNow = !!parseResult.data.publish_now;
+    let scheduledDate = new Date();
 
-    if (scheduledDate.getTime() <= Date.now()) {
-      reply.code(400).send({ error: "Scheduled time must be in the future" });
-      return;
+    if (!isPublishNow) {
+      if (!scheduled_at) {
+        reply.code(400).send({ error: "scheduled_at is required when not publishing immediately" });
+        return;
+      }
+      scheduledDate = new Date(scheduled_at);
+      if (isNaN(scheduledDate.getTime())) {
+        reply.code(400).send({ error: "Invalid scheduled_at date" });
+        return;
+      }
+      if (scheduledDate.getTime() <= Date.now()) {
+        reply.code(400).send({ error: "Scheduled time must be in the future" });
+        return;
+      }
     }
 
     let account = null;
@@ -158,9 +167,27 @@ export const postsRoutes: FastifyPluginAsync = async (fastify) => {
         mediaType: media_type || "none",
         mediaUrls: media_urls || [],
         mediaTitle: media_title || null,
-        status: "scheduled",
+        status: isPublishNow ? "processing" : "scheduled",
       })
       .returning();
+
+    if (isPublishNow) {
+      const publishRes = await executePublish(post.id);
+      if (!publishRes.success) {
+        reply.code(400).send({ error: publishRes.error || "Failed to publish post to LinkedIn" });
+        return;
+      }
+
+      const updatedPost = await db.query.scheduledPosts.findFirst({
+        where: eq(scheduledPosts.id, post.id),
+      });
+
+      return reply.code(201).send({
+        success: true,
+        post: updatedPost || post,
+        message: "Post published immediately to LinkedIn.",
+      });
+    }
 
     await schedulePostJob(post.id, scheduledDate);
 
