@@ -9,6 +9,7 @@ import { executePublish } from "../queue/worker.js";
 import { getDefaultTimezone } from "../services/settings.service.js";
 import { getUpcomingOptimalTimes } from "../services/optimal_time.service.js";
 import { generateCarouselPdf, type CarouselSlide } from "../services/carousel.service.js";
+import sharp from "sharp";
 import path from "node:path";
 import fs from "node:fs";
 import crypto from "node:crypto";
@@ -160,13 +161,13 @@ export function createMcpServer(): McpServer {
         .enum(["none", "image", "video", "carousel"])
         .default("none")
         .describe(
-          "Type of rich media attached: 'none' for text-only, 'image' for photo(s), 'video' for MP4 video, or 'carousel' for PDF document slides. NOTE: For carousels, you can first call 'create_carousel_pdf' to auto-generate the PDF and pass its URL here. For images/videos, check 'list_media_library' or use 'import_media_from_url'."
+          "Type of rich media attached: 'none' (text-only), 'image' (photo/graphic), 'video' (MP4 video), or 'carousel' (PDF document slides). NOTE: If designing a carousel, first call 'create_carousel_pdf' and pass the URL here. If designing a graphic/quote/infographic image, call 'render_image_from_svg' and pass the URL here."
         ),
       media_urls: z
         .array(z.string())
         .optional()
         .describe(
-          "Array of public media URLs (or data URIs). You can obtain URLs by generating a carousel with 'create_carousel_pdf', listing files with 'list_media_library', or importing a web image/video via 'import_media_from_url'."
+          "Array of public media URLs. You can obtain URLs by calling 'create_carousel_pdf' (for carousels), 'render_image_from_svg' (for graphics/images designed by Claude), 'list_media_library' (for uploaded files), or 'import_media_from_url'."
         ),
       media_title: z
         .string()
@@ -372,13 +373,13 @@ export function createMcpServer(): McpServer {
         .enum(["none", "image", "video", "carousel"])
         .default("none")
         .describe(
-          "Type of rich media attached: 'none' for text-only, 'image' for photo(s), 'video' for MP4 video, or 'carousel' for PDF document. NOTE: For carousels, you can first call 'create_carousel_pdf' to auto-generate the PDF and pass its URL here. For images/videos, check 'list_media_library' or use 'import_media_from_url'."
+          "Type of rich media attached: 'none' (text-only), 'image' (photo/graphic), 'video' (MP4 video), or 'carousel' (PDF document slides). NOTE: If designing a carousel, first call 'create_carousel_pdf' and pass the URL here. If designing a graphic/quote/infographic image, call 'render_image_from_svg' and pass the URL here."
         ),
       media_urls: z
         .array(z.string())
         .optional()
         .describe(
-          "Array of public media URLs. You can obtain URLs by generating a carousel with 'create_carousel_pdf', listing files with 'list_media_library', or importing a web image/video via 'import_media_from_url'."
+          "Array of public media URLs. You can obtain URLs by calling 'create_carousel_pdf' (for carousels), 'render_image_from_svg' (for graphics/images designed by Claude), 'list_media_library' (for uploaded files), or 'import_media_from_url'."
         ),
       media_title: z
         .string()
@@ -997,6 +998,59 @@ export function createMcpServer(): McpServer {
         return {
           isError: true,
           content: [{ type: "text", text: `Failed to import media: ${err.message}` }],
+        };
+      }
+    }
+  );
+
+  // Tool 11: render_image_from_svg
+  server.tool(
+    "render_image_from_svg",
+    {
+      svg: z.string().describe("Complete SVG XML markup string designed by Claude (e.g. quote card, stats infographic, announcement, branded graphic)."),
+      width: z.number().optional().default(1080).describe("Target image width in pixels (default: 1080 for square LinkedIn post)."),
+      height: z.number().optional().default(1080).describe("Target image height in pixels (default: 1080 for square, 1350 for portrait, 566 for landscape)."),
+      title: z.string().optional().describe("Optional short title for the image."),
+    },
+    async ({ svg, width, height, title }) => {
+      try {
+        const safeName = `graphic_${Date.now()}_${crypto.randomBytes(6).toString("hex")}.png`;
+        const savePath = path.join(UPLOADS_DIR, safeName);
+
+        const svgBuffer = Buffer.from(svg.trim());
+        await sharp(svgBuffer, { density: 150 })
+          .resize(width || 1080, height || 1080, { fit: "cover" })
+          .png({ quality: 95 })
+          .toFile(savePath);
+
+        const baseUrl = getMcpBaseUrl();
+        const publicUrl = `${baseUrl}/uploads/${safeName}`;
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  success: true,
+                  message: "SVG design successfully rendered into high-resolution PNG image.",
+                  filename: safeName,
+                  url: publicUrl,
+                  media_type: "image",
+                  width: width || 1080,
+                  height: height || 1080,
+                  next_step: `Call 'schedule_post' or 'publish_post_now' with media_type='image', media_urls=['${publicUrl}'], and media_title='${title || "LinkedIn Graphic"}'.`,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: `Failed to render SVG to image: ${err.message}` }],
         };
       }
     }
