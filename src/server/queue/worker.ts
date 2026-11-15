@@ -64,7 +64,7 @@ export async function executePublish(postId: string, jobId?: string): Promise<{ 
     .where(
       and(
         eq(scheduledPosts.id, postId),
-        inArray(scheduledPosts.status, ["scheduled", "failed"])
+        inArray(scheduledPosts.status, ["scheduled", "failed", "processing"])
       )
     )
     .returning();

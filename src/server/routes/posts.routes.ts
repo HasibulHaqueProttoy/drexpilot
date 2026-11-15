@@ -167,7 +167,7 @@ export const postsRoutes: FastifyPluginAsync = async (fastify) => {
         mediaType: media_type || "none",
         mediaUrls: media_urls || [],
         mediaTitle: media_title || null,
-        status: isPublishNow ? "processing" : "scheduled",
+        status: "scheduled",
       })
       .returning();
 
