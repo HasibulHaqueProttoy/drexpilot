@@ -30,8 +30,42 @@ export function ScheduleModal({
   const [mediaUrls, setMediaUrls] = useState<string>("");
   const [mediaTitle, setMediaTitle] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [actionType, setActionType] = useState<"schedule" | "now" | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    setError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/media/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to upload file");
+      }
+
+      setMediaUrls((prev) => (prev ? `${prev}, ${data.url}` : data.url));
+      if (!mediaTitle && file.name) {
+        setMediaTitle(file.name.replace(/\.[^/.]+$/, ""));
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to upload file");
+    } finally {
+      setIsUploading(false);
+      e.target.value = "";
+    }
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -300,11 +334,51 @@ export function ScheduleModal({
               <>
                 <div>
                   <label className="block text-xs font-medium text-slate-700 mb-1">
+                    Upload from Device or Paste URL
+                  </label>
+                  <label className={`cursor-pointer flex items-center justify-center gap-2 px-3 py-2.5 border-2 border-dashed rounded-md transition-colors ${
+                    isUploading
+                      ? "border-blue-300 bg-blue-50 text-blue-600"
+                      : "border-slate-300 bg-white hover:border-blue-400 hover:bg-blue-50/40 text-slate-700"
+                  }`}>
+                    {isUploading ? (
+                      <>
+                        <div className="h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                        <span className="text-xs font-medium">Uploading to SMMPilot...</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="h-4 w-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        <span className="text-xs font-medium">
+                          Choose {mediaType === "carousel" ? "PDF document" : mediaType === "video" ? "MP4 video" : "Image file"} to upload
+                        </span>
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      disabled={isUploading}
+                      onChange={handleFileUpload}
+                      accept={
+                        mediaType === "carousel"
+                          ? ".pdf,application/pdf"
+                          : mediaType === "video"
+                          ? "video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm"
+                          : "image/png,image/jpeg,image/jpg,image/webp,image/gif"
+                      }
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
                     {mediaType === "carousel"
-                      ? "Public PDF Document URL"
+                      ? "PDF Document URL"
                       : mediaType === "video"
-                      ? "Public MP4 Video URL"
-                      : "Public Image URL(s) (comma-separated for multi-image)"}
+                      ? "MP4 Video URL"
+                      : "Image URL(s) (comma-separated for multi-image)"}
                   </label>
                   <input
                     type="url"
@@ -312,14 +386,27 @@ export function ScheduleModal({
                     onChange={(e) => setMediaUrls(e.target.value)}
                     placeholder={
                       mediaType === "carousel"
-                        ? "https://example.com/slides.pdf"
+                        ? "https://smmpilot.drex.agency/uploads/example.pdf"
                         : mediaType === "video"
-                        ? "https://example.com/video.mp4"
-                        : "https://example.com/image1.jpg, https://example.com/image2.jpg"
+                        ? "https://smmpilot.drex.agency/uploads/example.mp4"
+                        : "https://...image1.jpg, https://...image2.jpg"
                     }
                     className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-xs text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
                     required
                   />
+                  {mediaUrls && (
+                    <div className="mt-1 flex items-center justify-between text-[11px] text-emerald-600 bg-emerald-50 px-2 py-1 rounded">
+                      <span className="truncate">Attached: {mediaUrls}</span>
+                      <button
+                        type="button"
+                        onClick={() => setMediaUrls("")}
+                        className="ml-2 text-slate-400 hover:text-red-500 font-bold"
+                        title="Remove attachment"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {(mediaType === "carousel" || mediaType === "image" || mediaType === "video") && (

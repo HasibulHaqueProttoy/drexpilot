@@ -8,7 +8,29 @@ import { schedulePostJob, reschedulePostJob, cancelPostJob } from "../queue/sche
 import { executePublish } from "../queue/worker.js";
 import { getDefaultTimezone } from "../services/settings.service.js";
 import { getUpcomingOptimalTimes } from "../services/optimal_time.service.js";
+import { generateCarouselPdf, type CarouselSlide } from "../services/carousel.service.js";
+import path from "node:path";
+import fs from "node:fs";
+import crypto from "node:crypto";
 import { env } from "../config/env.js";
+
+const UPLOADS_DIR = path.join(process.cwd(), "uploads");
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
+function getMcpBaseUrl(): string {
+  if (process.env.APP_URL && !process.env.APP_URL.includes("localhost")) {
+    return process.env.APP_URL.replace(/\/+$/, "");
+  }
+  if (env.FRONTEND_URL && !env.FRONTEND_URL.includes("localhost") && !env.FRONTEND_URL.includes("127.0.0.1")) {
+    return env.FRONTEND_URL.replace(/\/+$/, "");
+  }
+  if (process.env.RENDER_EXTERNAL_URL) {
+    return process.env.RENDER_EXTERNAL_URL.replace(/\/+$/, "");
+  }
+  return "https://smmpilot.drex.agency";
+}
 
 export function createMcpServer(): McpServer {
   const server = new McpServer({
@@ -138,18 +160,18 @@ export function createMcpServer(): McpServer {
         .enum(["none", "image", "video", "carousel"])
         .default("none")
         .describe(
-          "Type of rich media attached: 'none' for text-only, 'image' for single or multiple photos, 'video' for MP4 video, or 'carousel' for PDF document rendered as an interactive LinkedIn slide carousel."
+          "Type of rich media attached: 'none' for text-only, 'image' for photo(s), 'video' for MP4 video, or 'carousel' for PDF document slides. NOTE: For carousels, you can first call 'create_carousel_pdf' to auto-generate the PDF and pass its URL here. For images/videos, check 'list_media_library' or use 'import_media_from_url'."
         ),
       media_urls: z
         .array(z.string())
         .optional()
         .describe(
-          "Array of image URLs, video URL, or PDF document URL (or base64 data URIs) to attach to the LinkedIn post."
+          "Array of public media URLs (or data URIs). You can obtain URLs by generating a carousel with 'create_carousel_pdf', listing files with 'list_media_library', or importing a web image/video via 'import_media_from_url'."
         ),
       media_title: z
         .string()
         .optional()
-        .describe("Title for the document / carousel slides or media attachment."),
+        .describe("Title for the document / carousel slides or media attachment (e.g. '7 Ways to Scale Your SaaS')."),
     },
     async ({ platform, content, scheduled_at, timezone, target, media_type, media_urls, media_title }) => {
       // 1. Platform validation
@@ -350,16 +372,18 @@ export function createMcpServer(): McpServer {
         .enum(["none", "image", "video", "carousel"])
         .default("none")
         .describe(
-          "Type of rich media attached: 'none' for text-only, 'image' for photo(s), 'video' for MP4 video, or 'carousel' for PDF document."
+          "Type of rich media attached: 'none' for text-only, 'image' for photo(s), 'video' for MP4 video, or 'carousel' for PDF document. NOTE: For carousels, you can first call 'create_carousel_pdf' to auto-generate the PDF and pass its URL here. For images/videos, check 'list_media_library' or use 'import_media_from_url'."
         ),
       media_urls: z
         .array(z.string())
         .optional()
-        .describe("Array of image URLs, video URL, or PDF document URL (or base64 data URIs)."),
+        .describe(
+          "Array of public media URLs. You can obtain URLs by generating a carousel with 'create_carousel_pdf', listing files with 'list_media_library', or importing a web image/video via 'import_media_from_url'."
+        ),
       media_title: z
         .string()
         .optional()
-        .describe("Title for the document / carousel slides or media attachment."),
+        .describe("Title for the document / carousel slides or media attachment (e.g. '7 Ways to Scale Your SaaS')."),
     },
     async ({ platform, content, target, media_type, media_urls, media_title }) => {
       const normalizedPlatform = platform.toLowerCase().trim();
@@ -769,6 +793,212 @@ export function createMcpServer(): McpServer {
           },
         ],
       };
+    }
+  );
+
+  // Tool 8: create_carousel_pdf
+  server.tool(
+    "create_carousel_pdf",
+    {
+      deck_title: z.string().describe("Title and primary subject of the carousel deck (e.g. '10 Prompt Engineering Rules')."),
+      theme: z
+        .enum(["dark", "blue", "clean", "emerald"])
+        .default("dark")
+        .describe("Visual color theme for the carousel slides (dark: modern navy/slate, blue: dynamic blue, clean: crisp white, emerald: executive green)."),
+      author_name: z
+        .string()
+        .optional()
+        .describe("Author name or brand displayed in header/footer (defaults to connected LinkedIn profile)."),
+      author_handle: z
+        .string()
+        .optional()
+        .describe("Social handle displayed in footer, e.g. 'smmpilot' or 'hasibulprottoy'."),
+      slides: z
+        .array(
+          z.object({
+            headline: z.string().describe("Punchy headline for this slide (max 8-12 words)."),
+            body: z.string().optional().describe("Clear explanation, context, or narrative for this slide."),
+            bullet_points: z.array(z.string()).optional().describe("Key takeaways, tips, or steps."),
+            highlight: z.string().optional().describe("Bottom callout or CTA (e.g. 'Swipe next →', 'Save this post')."),
+          })
+        )
+        .min(2)
+        .describe("Array of slides (minimum 2, typically 4-8 slides for high LinkedIn engagement)."),
+    },
+    async ({ deck_title, theme, author_name, author_handle, slides }) => {
+      let author = author_name;
+      if (!author) {
+        const account = await db.query.socialAccounts.findFirst({
+          where: eq(socialAccounts.status, "connected"),
+        });
+        if (account) author = account.accountName;
+      }
+
+      const result = await generateCarouselPdf(
+        {
+          deck_title,
+          theme,
+          author_name: author || "SMMPilot",
+          author_handle,
+          slides,
+        },
+        UPLOADS_DIR
+      );
+
+      const baseUrl = getMcpBaseUrl();
+      const pdfUrl = `${baseUrl}/uploads/${result.filename}`;
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                success: true,
+                message: `Carousel PDF with ${result.slideCount} slides successfully generated.`,
+                deck_title,
+                slide_count: result.slideCount,
+                theme,
+                pdf_url: pdfUrl,
+                next_step: `Call 'schedule_post' or 'publish_post_now' with media_type='carousel', media_urls=['${pdfUrl}'], and media_title='${deck_title}'.`,
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    }
+  );
+
+  // Tool 9: list_media_library
+  server.tool(
+    "list_media_library",
+    {
+      type: z
+        .enum(["all", "image", "video", "carousel"])
+        .default("all")
+        .describe("Filter media by type: 'all', 'image', 'video', or 'carousel' (PDF)."),
+      limit: z
+        .number()
+        .optional()
+        .default(20)
+        .describe("Maximum number of recent media items to return."),
+    },
+    async ({ type, limit }) => {
+      const baseUrl = getMcpBaseUrl();
+      if (!fs.existsSync(UPLOADS_DIR)) {
+        return {
+          content: [{ type: "text", text: JSON.stringify({ total: 0, items: [] }) }],
+        };
+      }
+
+      const files = fs.readdirSync(UPLOADS_DIR).filter((f) => !f.startsWith("."));
+      const items = files.map((filename) => {
+        const filePath = path.join(UPLOADS_DIR, filename);
+        const stat = fs.statSync(filePath);
+        const ext = path.extname(filename).toLowerCase();
+
+        let mediaType: "image" | "video" | "carousel" = "image";
+        if (ext === ".pdf") mediaType = "carousel";
+        else if (ext === ".mp4" || ext === ".mov" || ext === ".webm") mediaType = "video";
+
+        return {
+          filename,
+          url: `${baseUrl}/uploads/${filename}`,
+          media_type: mediaType,
+          size_bytes: stat.size,
+          created_at: stat.birthtime.toISOString(),
+        };
+      });
+
+      const filtered = type === "all" ? items : items.filter((i) => i.media_type === type);
+      filtered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      const paged = filtered.slice(0, limit || 20);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(
+              {
+                total: filtered.length,
+                displayed: paged.length,
+                media_library: paged,
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    }
+  );
+
+  // Tool 10: import_media_from_url
+  server.tool(
+    "import_media_from_url",
+    {
+      url: z.string().url().describe("Public web URL of the image, video, or PDF to import into SMMPilot."),
+      filename_hint: z.string().optional().describe("Optional friendly name for the file (e.g. 'chart.png')."),
+    },
+    async ({ url, filename_hint }) => {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) {
+          return {
+            isError: true,
+            content: [{ type: "text", text: `Failed to fetch media from URL (${res.status} ${res.statusText})` }],
+          };
+        }
+
+        const contentType = res.headers.get("content-type") || "";
+        let ext = path.extname(new URL(url).pathname).toLowerCase();
+        if (!ext || ext.length > 5) {
+          if (contentType.includes("pdf")) ext = ".pdf";
+          else if (contentType.includes("png")) ext = ".png";
+          else if (contentType.includes("webp")) ext = ".webp";
+          else if (contentType.includes("mp4")) ext = ".mp4";
+          else ext = ".jpg";
+        }
+
+        const safeName = `${Date.now()}_${crypto.randomBytes(6).toString("hex")}${ext}`;
+        const savePath = path.join(UPLOADS_DIR, safeName);
+        const arrayBuffer = await res.arrayBuffer();
+        fs.writeFileSync(savePath, Buffer.from(arrayBuffer));
+
+        const baseUrl = getMcpBaseUrl();
+        const publicUrl = `${baseUrl}/uploads/${safeName}`;
+
+        let mediaType: "image" | "video" | "carousel" = "image";
+        if (ext === ".pdf") mediaType = "carousel";
+        else if (ext === ".mp4" || ext === ".mov" || ext === ".webm") mediaType = "video";
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  success: true,
+                  message: "Media successfully imported into SMMPilot library.",
+                  filename: safeName,
+                  url: publicUrl,
+                  media_type: mediaType,
+                  size_bytes: arrayBuffer.byteLength,
+                },
+                null,
+                2
+              ),
+            },
+          ],
+        };
+      } catch (err: any) {
+        return {
+          isError: true,
+          content: [{ type: "text", text: `Failed to import media: ${err.message}` }],
+        };
+      }
     }
   );
 

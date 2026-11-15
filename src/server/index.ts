@@ -5,6 +5,7 @@ import fastify from "fastify";
 import cors from "@fastify/cors";
 import cookie from "@fastify/cookie";
 import formbody from "@fastify/formbody";
+import multipart from "@fastify/multipart";
 import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
 import path from "node:path";
@@ -24,6 +25,7 @@ import { postsRoutes } from "./routes/posts.routes.js";
 import { settingsRoutes } from "./routes/settings.routes.js";
 import { mcpRoutes } from "./routes/mcp.routes.js";
 import { oauthRoutes } from "./routes/oauth.routes.js";
+import { mediaRoutes } from "./routes/media.routes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -49,6 +51,13 @@ export async function buildApp() {
 
   // Support form-urlencoded requests (OAuth / token endpoints)
   await app.register(formbody);
+
+  // Support multipart file uploads (images, videos, PDF carousels)
+  await app.register(multipart, {
+    limits: {
+      fileSize: 100 * 1024 * 1024, // 100 MB max for videos/PDFs
+    },
+  });
 
   // Security: Rate limiting
   await app.register(rateLimit, {
@@ -76,12 +85,25 @@ export async function buildApp() {
   await app.register(authRoutes, { prefix: "/api/auth" });
   await app.register(postsRoutes, { prefix: "/api/posts" });
   await app.register(settingsRoutes, { prefix: "/api/settings" });
+  await app.register(mediaRoutes, { prefix: "/api/media" });
 
   // MCP Remote Server Route
   await app.register(mcpRoutes, { prefix: "/mcp" });
 
   // OAuth 2.0 & Claude Remote Connector Routes
   await app.register(oauthRoutes);
+
+  // Static uploads directory serving
+  const uploadsPath = path.join(process.cwd(), "uploads");
+  if (!fs.existsSync(uploadsPath)) {
+    fs.mkdirSync(uploadsPath, { recursive: true });
+  }
+
+  await app.register(fastifyStatic, {
+    root: uploadsPath,
+    prefix: "/uploads/",
+    decorateReply: false,
+  });
 
   // Production static file serving if Next.js export exists
   const publicPath = path.join(process.cwd(), "out");
@@ -98,7 +120,8 @@ export async function buildApp() {
         !req.raw.url.startsWith("/api") &&
         !req.raw.url.startsWith("/mcp") &&
         !req.raw.url.startsWith("/oauth") &&
-        !req.raw.url.startsWith("/.well-known")
+        !req.raw.url.startsWith("/.well-known") &&
+        !req.raw.url.startsWith("/uploads")
       ) {
         const cleanPath = req.raw.url.split("?")[0].replace(/^\//, "");
         const htmlPath = path.join(publicPath, `${cleanPath}.html`);
